@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 250" width="960" height="250" font-family="-apple-system, 'Segoe UI', Roboto, Ubuntu, sans-serif">
+  <title>How it works: Claude Code sessions on each computer are turned into small private records, synced through your own git repo, and shown as one daily work log.</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="960" height="250" rx="16" fill="#ffffff"/>
+
+  <!-- 1. Claude Code -->
+  <rect x="24" y="52" width="200" height="130" rx="12" fill="#eef2ff" stroke="#2f5bea" stroke-width="1.5"/>
+  <text x="124" y="40" text-anchor="middle" font-size="13" font-weight="700" fill="#2f5bea">1 · YOU WORK</text>
+  <text x="124" y="100" text-anchor="middle" font-size="17" font-weight="700" fill="#1e293b">Claude Code</text>
+  <text x="124" y="126" text-anchor="middle" font-size="13" fill="#475569">on your laptop,</text>
+  <text x="124" y="145" text-anchor="middle" font-size="13" fill="#475569">desktop, any account</text>
+
+  <line x1="230" y1="117" x2="262" y2="117" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 2. worklog -->
+  <rect x="268" y="52" width="200" height="130" rx="12" fill="#ecfdf5" stroke="#0f9d8a" stroke-width="1.5"/>
+  <text x="368" y="40" text-anchor="middle" font-size="13" font-weight="700" fill="#0f9d8a">2 · IT RECORDS</text>
+  <text x="368" y="100" text-anchor="middle" font-size="17" font-weight="700" fill="#1e293b">claude-worklog</text>
+  <text x="368" y="126" text-anchor="middle" font-size="13" fill="#475569">saves prompts, tokens,</text>
+  <text x="368" y="145" text-anchor="middle" font-size="13" fill="#475569">commits (secrets removed)</text>
+
+  <line x1="474" y1="117" x2="506" y2="117" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 3. private repo -->
+  <rect x="512" y="52" width="200" height="130" rx="12" fill="#fffbeb" stroke="#c98a12" stroke-width="1.5"/>
+  <text x="612" y="40" text-anchor="middle" font-size="13" font-weight="700" fill="#b07810">3 · IT SYNCS</text>
+  <text x="612" y="100" text-anchor="middle" font-size="17" font-weight="700" fill="#1e293b">Your private repo</text>
+  <text x="612" y="126" text-anchor="middle" font-size="13" fill="#475569">on GitHub, GitLab</text>
+  <text x="612" y="145" text-anchor="middle" font-size="13" fill="#475569">or Bitbucket</text>
+
+  <line x1="718" y1="117" x2="750" y2="117" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4. daily log -->
+  <rect x="756" y="52" width="180" height="130" rx="12" fill="#f5f3ff" stroke="#8a4fbf" stroke-width="1.5"/>
+  <text x="846" y="40" text-anchor="middle" font-size="13" font-weight="700" fill="#8a4fbf">4 · YOU READ</text>
+  <text x="846" y="100" text-anchor="middle" font-size="17" font-weight="700" fill="#1e293b">Daily work log</text>
+  <text x="846" y="126" text-anchor="middle" font-size="13" fill="#475569">what you did +</text>
+  <text x="846" y="145" text-anchor="middle" font-size="13" fill="#475569">tokens used</text>
+
+  <text x="480" y="222" text-anchor="middle" font-size="13" fill="#64748b">Automatic: syncs when a session ends, every hour, and writes summaries every night.</text>
+</svg>
