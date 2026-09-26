@@ -51,11 +51,11 @@ Done. Your work log fills up as you use Claude Code.
 
 ## Is my data private?
 
-Yes.
+Mostly yes, with a few things you should know.
 
 - 🔒 **Everything stays on your computer**, plus your own private git repo if you set one up. No cloud service, no tracking.
-- ✂️ **Only short notes are saved**: your prompts (shortened), token counts, file names and commit messages. Never your code, and never Claude's replies.
-- 🧹 **Secrets are removed**: API keys, passwords, tokens and e-mail addresses are cleaned out before saving.
+- ✂️ **Only short notes are saved**: the first 300 characters of each prompt, token counts, file names and commit messages. Your files and Claude's replies are never saved, but a code snippet you paste into a prompt can end up in those 300 characters.
+- 🧹 **Common secrets are hidden (best effort)**: well-known API key formats, `password=…` / `token=…` pairs, e-mail addresses and IP addresses are replaced with `[REDACTED]` before saving. This can miss things, such as a password written in a normal sentence, so keep your data repo **private**.
 - 🤖 **Optional AI summaries** use your own Claude account (`claude -p`). Turn them off in Settings to keep everything fully local.
 
 [More about privacy →](docs/GUIDE.md#privacy)
