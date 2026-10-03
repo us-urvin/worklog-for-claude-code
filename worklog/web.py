@@ -22,9 +22,9 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import services
+from . import chats, services
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -33,6 +33,7 @@ from .config import (
     Config,
     ConfigError,
     _expand,
+    default_downloads_dir,
     example_config,
     home_relative,
     load_config,
@@ -48,6 +49,8 @@ log = logging.getLogger(__name__)
 DEFAULT_PORT = 8765
 HOST_NAME = "worklog.localhost"  # *.localhost resolves to loopback in browsers and systemd-resolved
 MAX_BODY = 64 * 1024
+MAX_UPLOAD = 200 * 1024 * 1024  # claude.ai conversations export (zip or json)
+EXPORT_SETTINGS_URL = "https://claude.ai/settings/data-privacy-controls"
 COLORS = ["#2F5BEA", "#0F9D8A", "#C98A12", "#8A4FBF", "#C4456A", "#3E8E3E"]
 
 
@@ -62,6 +65,7 @@ OK_MESSAGES = {
     "saved": "Settings saved.",
     "named": "Login named. Its sessions are counted under that account from the next sync.",
     "job": "Started. This page updates when it finishes.",
+    "chat_saved": "Chat import settings saved.",
 }
 
 
@@ -205,12 +209,22 @@ SCRIPT = """
 function poll(){fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
 if(!s.running){location.reload()}else{setTimeout(poll,2000)}}).catch(function(){setTimeout(poll,4000)})}
 setTimeout(poll,2000)})();
+(function(){var btn=document.getElementById('chatupload'),inp=document.getElementById('chatfile');if(!btn||!inp)return;
+var out=document.getElementById('chatuploadstate');
+btn.addEventListener('click',function(){var f=inp.files[0];if(!f){out.textContent='Choose the conversations zip first.';return}
+if(f.size>btn.dataset.max*1){out.textContent='That file is too large.';return}
+btn.disabled=true;out.textContent='Uploading '+f.name+'…';
+fetch('/sources/upload',{method:'POST',body:f,headers:{'Content-Type':'application/octet-stream',
+'X-CSRF-Token':btn.dataset.csrf,'X-File-Name':encodeURIComponent(f.name)}}).then(function(r){
+return r.json().then(function(j){if(r.ok){location.href='/sources?ok=job'}else{out.textContent=j.error||'Upload failed.';btn.disabled=false}})})
+.catch(function(){out.textContent='Upload failed. Is the worklog service running?';btn.disabled=false})})})();
 """
 
 
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None) -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
-                  for k, h, t in (("day", "/", "Today"), ("settings", "/settings", "Settings")))
+                  for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
+                                  ("settings", "/settings", "Settings")))
     banners = ""
     if job.get("running"):
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
@@ -309,29 +323,45 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
     if not records:
         body = (head + '<p class="lede">Nothing recorded for this day yet.</p>' + _chart(history, names, day)
                 + '<div class="empty">Sessions appear here after a Claude Code session ends, or when you press '
-                  '<b>Sync now</b>. Other devices show up once they have synced.</div>' + actions)
+                  '<b>Sync now</b>. Other devices show up once they have synced. claude.ai chats appear after you '
+                  '<a href="/sources">import an export</a>.</div>' + actions)
         return body, None
 
     total = sum(sum(a["tokens"].values()) for a in accounts.values())
     sessions = sum(a["sessions"] for a in accounts.values())
+    n_chats = sum(a.get("chats", 0) for a in accounts.values())
     devices = sorted({d for a in accounts.values() for d in a["devices"]})
-    lede = (f'<p class="lede">{_n(total)} tokens across {sessions} session{"s" * (sessions != 1)} in '
-            f'{len(projects)} project{"s" * (len(projects) != 1)}, on {_join(devices)}.</p>')
+    code_projects = sum(1 for p in projects.values() if p.sessions)
+    chat_txt = f'{n_chats} claude.ai chat{"s" * (n_chats != 1)}'
+    if sessions:
+        lede = (f'<p class="lede">{_n(total)} tokens across {sessions} session{"s" * (sessions != 1)} in '
+                f'{code_projects} project{"s" * (code_projects != 1)}, on {_join(devices)}'
+                f'{", plus " + chat_txt if n_chats else ""}.</p>')
+    else:
+        lede = f'<p class="lede">{chat_txt}. claude.ai exports have no token counts.</p>'
 
     entries = []
-    for p in sorted(projects.values(), key=lambda p: (p.kind == "misc", -sum(p.tokens.values()))):
+    for p in sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -sum(p.tokens.values()))):
         s = saved.get(p.key)
         bullets = s["bullets"] if s else plain_summary(p)
         src = ("Summary by Claude" if s and s.get("source") == "ai" else
                "Your prompts. Press “Write summaries” for a written summary." if not s else "Your prompts")
         items = "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets)
         where = (f"{e(p.remote['host'])}/{e(p.remote['slug'])}" if p.remote
+                 else "From your claude.ai export" + (" · files in Claude's sandbox" if p.folders else "")
+                 if p.kind == "chat"
                  else ("Folders: " + _join(sorted(p.folders)) if p.folders else "Not in a git repo"))
-        facts = [("Accounts", _join(sorted(p.accounts))), ("Devices", _join(sorted(p.devices))),
-                 ("Sessions", str(p.sessions)), ("Time", _dur(p.minutes)),
-                 ("Tokens", _n(sum(p.tokens.values()))), ("Files edited", str(len(p.files)))]
+        facts = [("Accounts", _join(sorted(p.accounts))), ("Devices", _join(sorted(p.devices)))]
+        facts += [("Sessions", str(p.sessions))] if p.sessions else []
+        facts += [("Chats", str(p.chats))] if p.chats else []
+        facts += [("Time", _dur(p.minutes)),
+                  ("Tokens", _n(sum(p.tokens.values())) if p.sessions else "no data from claude.ai")]
+        facts += [("Files edited", str(len(p.files)))] if p.files or p.sessions else []
         dl = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts)
         extra = ""
+        if p.titles:
+            extra += (f'<details><summary>{len(p.titles)} chat{"s" * (len(p.titles) != 1)}</summary><ul>'
+                      + "".join(f"<li>{e(t)}</li>" for t in p.titles) + "</ul></details>")
         if p.commits:
             extra += (f'<details><summary>{len(p.commits)} commit{"s" * (len(p.commits) != 1)}</summary><ul>'
                       + "".join(f"<li><code>{e(h)}</code> {e(sub)}</li>" for h, sub in p.commits.items()) + "</ul></details>")
@@ -346,7 +376,8 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         f'background:{COLORS[names.index(n) % len(COLORS)] if n in names else "var(--muted)"}"></i>{e(n)}</td>'
         f'<td>{_short(a["tokens"]["input"])}</td><td>{_short(a["tokens"]["output"])}</td>'
         f'<td>{_short(a["tokens"]["cache_creation"])}</td><td>{_short(a["tokens"]["cache_read"])}</td>'
-        f'<td><b>{_short(sum(a["tokens"].values()))}</b></td></tr>' for n, a in sorted(accounts.items()))
+        f'<td><b>{_short(sum(a["tokens"].values()))}</b></td></tr>' for n, a in sorted(accounts.items())
+        if a["sessions"])
     model_rows = "".join(
         f'<tr><td>{e(n)}</td><td style="text-align:left">{e(m)}</td><td>{_short(sum(t.values()))}</td></tr>'
         for n, a in sorted(accounts.items()) for m, t in sorted(a["models"].items()))
@@ -355,9 +386,82 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
              f'{acct_rows}</table></div></div><div class="panel"><h2>By model</h2><div class="tablewrap"><table>'
              f'<tr><th>Account</th><th style="text-align:left">Model</th><th>Total</th></tr>{model_rows}</table></div>'
              f'<p class="muted" style="font-size:.8rem;margin:10px 0 0">Usage as logged by Claude Code, not a bill.</p></div></aside>')
+    if not sessions:
+        aside = ""  # chat-only day: no token tables to show
     body = (head + lede + _chart(history, names, day) + actions
             + f'<div class="cols" style="margin-top:26px"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>')
     return body, None
+
+
+def page_sources(app: App, cfg: Config) -> str:
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    busy = " disabled" if app.jobs.snapshot().get("running") else ""
+    code_rows = []
+    for a in cfg.accounts:
+        n = _transcript_count(a) if a.config_dir.is_dir() else 0
+        state = (f'<span class="state-ok">Automatic</span> · {n} session file{"s" * (n != 1)}'
+                 if hook_installed(a) else '<span class="state-bad">Hook not installed</span> · '
+                 '<a href="/settings">install it in Settings</a>')
+        code_rows.append(f'<tr><td>{e(a.name)}</td><td style="text-align:left"><code>{e(home_relative(a.config_dir))}</code>'
+                         f'</td><td style="text-align:left">{state}</td></tr>')
+
+    st = chats.load_state()
+    last = st.get("last_import")
+    if last:
+        imported = (f'<span class="state-ok">Imported</span> {e(str(last.get("at", ""))[:16].replace("T", " "))}: '
+                    f'{e(last.get("chats", 0))} chats as {e(last.get("records", 0))} day records, '
+                    f'filed under <b>{e(last.get("account", ""))}</b> (from {e(last.get("file", ""))}).')
+    else:
+        imported = '<span class="muted">Not imported yet.</span>'
+    watch = ""
+    if cfg.watch_downloads:
+        folder = cfg.downloads
+        if not folder.is_dir():
+            watch = f'<span class="state-bad">Folder not found:</span> <code>{e(home_relative(folder))}</code>'
+        else:
+            try:
+                waiting = len(chats.pending_downloads(cfg))
+            except OSError:
+                waiting = 0
+            watch = (f'<span class="state-ok">Watching</span> <code>{e(home_relative(folder))}</code>'
+                     + (f' · {waiting} new export{"s" * (waiting != 1)} waiting for the next sync' if waiting else ""))
+    acct_opts = "".join(f'<option{" selected" if a.name == cfg.chats_account else ""}>{e(a.name)}</option>'
+                        for a in cfg.accounts)
+    dl = home_relative(cfg.downloads_dir) if cfg.downloads_dir else ""
+    return f"""<h1>Sources<small>Where your work log comes from</small></h1>
+<section class="block" style="margin-top:24px"><h2>Claude Code</h2>
+<p class="help">Collected automatically from this device's session files when a session ends, every hour, and when you press Sync now. Includes token counts.</p>
+<div class="tablewrap"><table><tr><th>Account</th><th style="text-align:left">Folder</th><th style="text-align:left">State</th></tr>{"".join(code_rows)}</table></div>
+<form method="post" action="/action/collect" class="row">{c}<button{busy}>Sync now</button></form></section>
+
+<section class="block"><h2>claude.ai chats</h2>
+<p class="help">claude.ai has no live connection, so chats come from its data export. worklog keeps only chat titles,
+short redacted snippets of your own messages, tool names and edited file names. Claude's replies, chat summaries and
+attachments are never saved. Exports have no token counts.</p>
+<p>{imported}</p>
+<details{" open" if not last else ""}><summary>How to get the export</summary><ol>
+<li>Open <a href="{EXPORT_SETTINGS_URL}" target="_blank" rel="noopener noreferrer">claude.ai settings</a> → <b>Privacy</b> → <b>Export data</b>.</li>
+<li>Wait for the e-mail and open its link. It downloads a small list of files.</li>
+<li>Download <code>conversations-000.zip</code> (and <code>-001</code>… if there are more). The links expire after 24 hours.</li>
+<li>Upload it below, or turn on <b>Import from Downloads</b> and press Sync now.</li></ol></details>
+<label for="chatfile">Upload <code>conversations-*.zip</code> or <code>conversations.json</code></label>
+<div class="row" style="margin-top:4px"><input type="file" id="chatfile" accept=".zip,.json">
+<button id="chatupload" data-csrf="{app.csrf}" data-max="{MAX_UPLOAD}"{busy}>Import</button>
+<span id="chatuploadstate" class="muted" role="status"></span></div>
+
+<form method="post" action="/sources/settings" style="border-top:1px solid var(--rule);padding-top:14px;margin-top:18px">{c}
+<h3>Import settings</h3>
+<label for="chat_account">File imported chats under</label><select id="chat_account" name="account">{acct_opts}</select>
+<div class="check"><input type="checkbox" id="watch" name="watch" value="1"{" checked" if cfg.watch_downloads else ""}>
+<label for="watch">Import from Downloads: on each sync, import new <code>conversations-*.zip</code> files found in the folder below</label></div>
+<label for="downloads">Downloads folder (leave empty for <code>{e(home_relative(default_downloads_dir()))}</code>)</label>
+<input type="text" id="downloads" name="downloads" value="{e(dl)}">
+<p class="muted" style="font-size:.85rem">{watch or "Off. Nothing in your Downloads folder is read."} Files are never moved or deleted.</p>
+<div class="row"><button>Save</button></div></form>
+<form method="post" action="/sources/scan" class="row">{c}<button class="quiet"{busy if cfg.watch_downloads else " disabled"}>Check Downloads now</button></form></section>
+
+<section class="block"><h2>Browser extension</h2>
+<p class="help">Coming later: sync claude.ai chats automatically, without exporting. <span class="muted">Not available yet.</span></p></section>"""
 
 
 def page_setup(app: App, form: dict | None = None) -> str:
@@ -501,8 +605,29 @@ class App:
             return "/setup", None, form
         if path == "/action/collect":
             today = date.today()
-            started = self.jobs.start("Syncing", lambda: f"Synced: {collect(cfg, [today - timedelta(days=1), today])} new or updated session record(s).")
+
+            def sync():
+                msg = f"Synced: {collect(cfg, [today - timedelta(days=1), today])} new or updated session record(s)."
+                return " ".join([msg] + [r.message() for r in chats.scan_downloads(cfg)])
+            started = self.jobs.start("Syncing", sync)
             return ("/?ok=job" if started else "/"), None, form
+        if path == "/sources/scan":
+            def scan():
+                results = chats.scan_downloads(cfg)
+                return " ".join(r.message() for r in results) or "No new exports found in your Downloads folder."
+            started = self.jobs.start("Checking Downloads", scan)
+            return ("/sources?ok=job" if started else "/sources"), None, form
+        if path == "/sources/settings":
+            account = form.get("account", "")
+            if cfg.account(account) is None:
+                return None, "Pick one of your accounts for imported chats.", form
+            raw = form.get("downloads", "").strip()
+            folder = _expand(raw) if raw else None
+            if folder is not None and not under_home(folder, allow_home=True):
+                return None, "The Downloads folder must be inside your home folder.", form
+            cfg.chat_account = None if account == cfg.accounts[0].name else account
+            cfg.watch_downloads, cfg.downloads_dir = form.get("watch") == "1", folder
+            return self._save(cfg, "chat_saved", "/sources")
         if path == "/action/report":
             day = _parse_date(form.get("d")) or date.today()
 
@@ -522,6 +647,8 @@ class App:
             cfg.accounts = keep
             if cfg.summarizer_account == name:
                 cfg.summarizer_account = keep[0].name
+            if cfg.chat_account == name:
+                cfg.chat_account = None
             return self._save(cfg, "account_removed")
         if path == "/accounts/name":
             return self._account_name(cfg, form)
@@ -557,12 +684,52 @@ class App:
             return self._save(cfg, "saved")
         return None, "Unknown action.", form
 
-    def _save(self, cfg: Config, ok: str):
+    def _save(self, cfg: Config, ok: str, page: str = "/settings"):
         try:
             save_config(cfg)
         except (ConfigError, OSError) as exc:
             return None, f"Couldn't save settings: {exc}", {}
-        return f"/settings?ok={ok}", None, {}
+        return f"{page}?ok={ok}", None, {}
+
+    def upload(self, name: str, read, length: int) -> tuple[int, dict]:
+        """Store an uploaded export in a private temp folder and import it in the background."""
+        cfg = _try_config()
+        if cfg is None:
+            return 409, {"error": "Set up worklog first."}
+        if self.jobs.snapshot().get("running"):
+            return 409, {"error": "Another job is running. Try again when it finishes."}
+        base = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).name)[:100] or "conversations"
+        tmpdir = chats.STATE_DIR / "uploads" / secrets.token_hex(8)
+        tmpdir.mkdir(parents=True, mode=0o700)
+        head = read(min(length, 4))
+        suffix = ".zip" if head.startswith(b"PK") else ".json"
+        target = tmpdir / (base.rsplit(".", 1)[0] + suffix)
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(head)
+                left = length - len(head)
+                while left > 0:
+                    chunk = read(min(left, 1 << 20))
+                    if not chunk:
+                        raise OSError("upload ended early")
+                    fh.write(chunk)
+                    left -= len(chunk)
+        except OSError as exc:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return 400, {"error": f"Upload failed: {exc}"}
+
+        def job():
+            try:
+                return chats.import_chats(cfg, target).message()
+            except chats.ExportError as exc:
+                raise RuntimeError(str(exc)) from None
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        if not self.jobs.start("Importing chats", job):
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            return 409, {"error": "Another job is running. Try again when it finishes."}
+        return 202, {"ok": True}
 
     def _account_add(self, cfg: Config, form: dict):
         name = form.get("name", "").strip()
@@ -706,6 +873,8 @@ def make_handler(app: App):
                     return self._page(f"{day:%d %b %Y}", body, "day", q.get("ok"), err)
                 if url.path == "/settings":
                     return self._page("Settings", page_settings(app, cfg), "settings", q.get("ok"))
+                if url.path == "/sources":
+                    return self._page("Sources", page_sources(app, cfg), "sources", q.get("ok"))
                 return self._send(404, "Not found", "text/plain")
             except Exception:  # noqa: BLE001
                 log.exception("GET %s failed", self.path)
@@ -722,6 +891,8 @@ def make_handler(app: App):
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = -1
+            if urlsplit(self.path).path == "/sources/upload":
+                return self._upload(length)
             if not 0 <= length <= MAX_BODY:
                 return self._send(413, "Request too large", "text/plain")
             form = {k: v[0] for k, v in parse_qs(self.rfile.read(length).decode("utf-8", "replace"),
@@ -739,7 +910,25 @@ def make_handler(app: App):
             cfg = _try_config()
             if cfg is None or path == "/setup":
                 return self._page("Set up", page_setup(app, kept), "settings", error=error, status=400)
+            if path.startswith("/sources"):
+                return self._page("Sources", page_sources(app, cfg), "sources", error=error, status=400)
             return self._page("Settings", page_settings(app, cfg), "settings", error=error, status=400)
+
+        def _upload(self, length: int):
+            def reply(status: int, data: dict):
+                self.close_connection = status >= 400  # an unread body must not be parsed as the next request
+                return self._send(status, json.dumps(data), "application/json")
+            if not secrets.compare_digest(self.headers.get("X-CSRF-Token", ""), app.csrf):
+                return reply(403, {"error": "Page expired. Reload it and try again."})
+            if not 0 < length <= MAX_UPLOAD:
+                return reply(413, {"error": f"Upload a file of at most {MAX_UPLOAD // (1024 * 1024)} MB."})
+            name = unquote(self.headers.get("X-File-Name", "conversations"))
+            try:
+                status, data = app.upload(name, self.rfile.read, length)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("upload failed")
+                status, data = 500, {"error": f"Something went wrong: {exc}"}
+            return reply(status, data)
 
     return Handler
 

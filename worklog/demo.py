@@ -69,6 +69,21 @@ PROJECTS = [
 ]
 
 
+# claude.ai chats, as `import-chats` files them: no tokens, titles plus your own messages.
+CHATS = [
+    {"title": "Q3 roadmap outline", "prompts": ["help me outline the Q3 roadmap for the checkout team",
+                                                 "turn that into three milestones with owners"],
+     "bullet": "Outlined the Q3 checkout roadmap as three milestones with owners."},
+    {"title": "Explain idempotency keys", "prompts": ["explain idempotency keys like I'm new to payments"],
+     "bullet": "Learned how idempotency keys make payment retries safe."},
+    {"title": "Trip packing list", "prompts": ["make a packing list for a 3-day hike in autumn"],
+     "bullet": "Put together a packing list for a three-day autumn hike."},
+    {"title": "Review cover letter", "prompts": ["tighten this cover letter, keep it under 250 words",
+                                                  "make the opening line less generic"],
+     "bullet": "Tightened a cover letter to under 250 words."},
+]
+
+
 def demo_env(home: Path) -> dict[str, str]:
     """Environment for processes that must only ever see the fake home."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "CLAUDE_", "GIT_"))}
@@ -137,6 +152,27 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
     }
 
 
+def _chat_record(rng: random.Random, chat: dict, day: date, n: int, now: datetime) -> dict | None:
+    latest = now.hour - 1 if day == now.date() else 21
+    if latest < 9:
+        return None
+    start = datetime(day.year, day.month, day.day, rng.randint(9, latest), rng.randint(0, 59)).astimezone()
+    minutes = rng.randint(3, 40)
+    return {
+        "schema": 1, "source": "claude.ai", "session_id": f"chat-demo-{day:%Y%m%d}-{n:02d}", "title": chat["title"],
+        "date": day.isoformat(), "account": "personal", "device": DEVICES[0],
+        "project": {"kind": "chat", "name": "claude.ai chat", "folder": None, "path": None, "remote": None,
+                    "branches": []},
+        "start": start.isoformat(timespec="seconds"),
+        "end": (start + timedelta(minutes=minutes)).isoformat(timespec="seconds"),
+        "span_minutes": minutes, "api_calls": 0,
+        "tokens": {"input": 0, "output": 0, "cache_creation": 0, "cache_read": 0}, "tokens_by_model": {},
+        "message_count": 2 * len(chat["prompts"]), "prompt_count": len(chat["prompts"]), "prompts": chat["prompts"],
+        "files_touched": [], "tool_calls": {}, "commits": [],
+        "conversation_updated_at": (start + timedelta(minutes=minutes)).isoformat(timespec="seconds"),
+    }
+
+
 def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = None) -> Path:
     """Write a fake HOME: config, empty Claude folders and a data repo with `days` of records.
 
@@ -171,6 +207,15 @@ def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = N
                 rel.parent.mkdir(parents=True, exist_ok=True)
                 rel.write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
                 day_projects[project_key(rec["project"])] = proj
+        crng = random.Random(seed * 1000 + back)  # separate stream: chats don't change the session data
+        for n, chat in enumerate(crng.sample(CHATS, k=crng.randint(0, 2))):
+            rec = _chat_record(crng, chat, day, n, now)
+            if rec is None:
+                continue
+            rel = store / "records" / day.isoformat() / DEVICES[0] / "personal" / f"{rec['session_id']}.json"
+            rel.parent.mkdir(parents=True, exist_ok=True)
+            rel.write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            day_projects.setdefault(project_key(rec["project"]), {"bullets": []})["bullets"].append(chat["bullet"])
         # Past days have finished summaries; today shows raw prompts, as it would before the nightly run.
         if back > 0 and day_projects:
             summaries = {key: {"bullets": [f"- {b}" for b in p["bullets"]], "source": "ai"}

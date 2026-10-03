@@ -6,6 +6,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Import claude.ai chats from claude.ai's data export (`conversations-*.zip`): `claude-worklog import-chats`,
+  an upload button on the new **Sources** page, or an opt-in toggle that imports new exports from your Downloads
+  folder on every sync. Chats appear on the day page and in the report next to Claude Code work, without token
+  counts (the export has none).
+- Only chat titles and short redacted snippets of your own messages are kept. Claude's replies, chat summaries,
+  thinking, attachments and the export's other files are never read into records.
+- Re-importing is idempotent, older exports never overwrite newer data, multi-part exports are merged, chats that
+  are already-recorded Claude Code sessions are skipped, and the same chat imported on two devices counts once.
+- **Sources** page in the web UI: Claude Code status per account, chat import status and settings, and a
+  placeholder for a future browser extension.
+- `[chat]` config section: `account`, `watch_downloads`, `downloads_dir`.
+- Demo data now includes a few claude.ai chats.
+
 ## [0.1.0] - 2026-09-26
 
 First public release, published on PyPI as `worklog-for-claude-code`. The command is `claude-worklog`.

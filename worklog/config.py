@@ -71,6 +71,12 @@ use_ai = true                 # summarize with `claude -p`; false = plain listin
 summarizer_account = "personal"
 claude_bin = "claude"         # use an absolute path if running from cron
 ai_timeout_seconds = 180
+
+[chat]
+# claude.ai chat exports (Settings > Privacy > Export data). See the Sources page.
+account = ""                  # worklog account for imported chats; empty = the first account
+watch_downloads = false       # import new conversations-*.zip files found in downloads_dir on each sync
+downloads_dir = ""            # empty = your Downloads folder
 """
 
 
@@ -105,7 +111,19 @@ class Config:
     summarizer_account: str | None = None
     claude_bin: str = "claude"
     ai_timeout: int = 180
+    chat_account: str | None = None
+    watch_downloads: bool = False
+    downloads_dir: Path | None = None
     path: Path = field(default=CONFIG_PATH)
+
+    @property
+    def chats_account(self) -> str:
+        """Account that imported claude.ai chats are filed under."""
+        return self.chat_account or self.accounts[0].name
+
+    @property
+    def downloads(self) -> Path:
+        return self.downloads_dir or default_downloads_dir()
 
     def account(self, name: str) -> Account | None:
         return next((a for a in self.accounts if a.name == name), None)
@@ -135,6 +153,18 @@ class Config:
             if hit:
                 return hit
         return self.default_account(config_dir)
+
+
+def default_downloads_dir() -> Path:
+    """XDG_DOWNLOAD_DIR from ~/.config/user-dirs.dirs, else ~/Downloads."""
+    dirs = _xdg("XDG_CONFIG_HOME", ".config") / "user-dirs.dirs"
+    try:
+        m = re.search(r'^XDG_DOWNLOAD_DIR="([^"]+)"', dirs.read_text(encoding="utf-8"), re.M)
+    except OSError:
+        m = None
+    if m:
+        return Path(m.group(1).replace("$HOME", str(Path.home()))).expanduser()
+    return Path.home() / "Downloads"
 
 
 def _expand(p: str) -> Path:
@@ -216,6 +246,15 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
 
     col = raw.get("collect", {})
     rep = raw.get("report", {})
+    chat = raw.get("chat", {})
+    if not isinstance(chat, dict):
+        raise ConfigError("[chat] must be a table")
+    chat_account = chat.get("account") or None
+    if chat_account is not None:
+        _check_name("chat account", chat_account)
+    downloads = chat.get("downloads_dir") or None
+    if downloads is not None and not isinstance(downloads, str):
+        raise ConfigError("downloads_dir must be a path")
     cfg = Config(
         device=device,
         store_repo=_expand(raw["store_repo"]),
@@ -228,10 +267,15 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         summarizer_account=rep.get("summarizer_account") or accounts[0].name,
         claude_bin=str(rep.get("claude_bin", "claude")),
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
+        chat_account=chat_account,
+        watch_downloads=bool(chat.get("watch_downloads", False)),
+        downloads_dir=_expand(downloads) if downloads else None,
         path=path,
     )
     if cfg.account(cfg.summarizer_account) is None:
         raise ConfigError(f"summarizer_account {cfg.summarizer_account!r} is not a configured account")
+    if cfg.chat_account and cfg.account(cfg.chat_account) is None:
+        raise ConfigError(f"[chat] account {cfg.chat_account!r} is not a configured account")
     return cfg
 
 
@@ -272,7 +316,9 @@ def dump_config(cfg: Config) -> str:
     out += ["[collect]", f"misc_label = {q(cfg.misc_label)}", f"include_commits = {b(cfg.include_commits)}",
             f"max_prompts_per_session = {cfg.max_prompts}", f"max_prompt_chars = {cfg.max_prompt_chars}", "",
             "[report]", f"use_ai = {b(cfg.use_ai)}", f"summarizer_account = {q(cfg.summarizer_account)}",
-            f"claude_bin = {q(cfg.claude_bin)}", f"ai_timeout_seconds = {cfg.ai_timeout}", ""]
+            f"claude_bin = {q(cfg.claude_bin)}", f"ai_timeout_seconds = {cfg.ai_timeout}", "",
+            "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
+            f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}", ""]
     return "\n".join(out)
 
 

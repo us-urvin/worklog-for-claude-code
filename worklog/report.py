@@ -40,6 +40,27 @@ class ProjectDay:
     folders: set[str] = field(default_factory=set)
     commits: dict[str, str] = field(default_factory=dict)  # hash -> subject (deduped)
     branches: set[str] = field(default_factory=set)
+    chats: int = 0  # claude.ai chat records (no token data)
+    titles: list[str] = field(default_factory=list)  # chat titles, in order seen
+
+
+def is_chat(r: dict) -> bool:
+    return r.get("source") == "claude.ai"
+
+
+def _dedupe_chats(records: list[dict]) -> list[dict]:
+    """The same export imported on two devices: keep one copy of each chat-day, the newest."""
+    best: dict[tuple, dict] = {}
+    out = []
+    for r in records:
+        if not is_chat(r):
+            out.append(r)
+            continue
+        key = (r.get("session_id"), r.get("date"))
+        old = best.get(key)
+        if old is None or str(r.get("conversation_updated_at") or "") > str(old.get("conversation_updated_at") or ""):
+            best[key] = r
+    return out + list(best.values())
 
 
 def _add(dst: dict[str, int], src: object) -> None:
@@ -51,11 +72,14 @@ def _add(dst: dict[str, int], src: object) -> None:
 def aggregate(records: list[dict]):
     accounts: dict[str, dict] = {}
     projects: dict[str, ProjectDay] = {}
-    for r in records:
+    for r in _dedupe_chats(records):
         acct = accounts.setdefault(r.get("account", "?"), {
-            "tokens": zero_tokens(), "sessions": 0, "devices": set(), "models": {}})
+            "tokens": zero_tokens(), "sessions": 0, "chats": 0, "devices": set(), "models": {}})
         _add(acct["tokens"], r.get("tokens"))
-        acct["sessions"] += 1
+        if is_chat(r):
+            acct["chats"] += 1
+        else:
+            acct["sessions"] += 1
         acct["devices"].add(r.get("device", "?"))
         for model, t in (r.get("tokens_by_model") or {}).items():
             _add(acct["models"].setdefault(model, zero_tokens()), t)
@@ -66,7 +90,12 @@ def aggregate(records: list[dict]):
                                                 proj.get("remote")))
         p.accounts.add(r.get("account", "?"))
         p.devices.add(r.get("device", "?"))
-        p.sessions += 1
+        if is_chat(r):
+            p.chats += 1
+            if r.get("title") and r["title"] not in p.titles:
+                p.titles.append(str(r["title"]))
+        else:
+            p.sessions += 1
         p.minutes += int(r.get("span_minutes") or 0)
         _add(p.tokens, r.get("tokens"))
         start = (r.get("start") or "")[11:16]
@@ -100,13 +129,14 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
         return None
     data = {
         "project": p.name, "kind": p.kind, "branches": sorted(p.branches), "folders": sorted(p.folders),
+        "chat_titles": p.titles,
         "prompts_in_order": [q for _, q in p.prompts],
         "commits": list(p.commits.values()), "files_edited": sorted(p.files)[:80],
     }
     blob = json.dumps(data, ensure_ascii=False)[:_MAX_AI_INPUT_CHARS]
     prompt = (
         f"You are writing a developer's end-of-day work log for {day.isoformat()}. "
-        "The JSON below was extracted from their Claude Code sessions for ONE project. "
+        "The JSON below was extracted from their Claude Code sessions and/or claude.ai chats for ONE project. "
         "Write 2-7 concise bullet points describing what was accomplished or investigated "
         "(features implemented, bugs fixed, refactors, research). Past tense, no fluff. "
         "Use ONLY the data given; if something is unclear, describe it generically rather than guess. "
@@ -156,44 +186,56 @@ def summarize_all(projects: dict[str, ProjectDay], day: date, cfg: Config, use_a
 def render(day: date, cfg: Config, accounts: dict, projects: dict[str, ProjectDay], summaries: dict) -> str:
     devices = sorted({d for a in accounts.values() for d in a["devices"]})
     total_sessions = sum(a["sessions"] for a in accounts.values())
+    total_chats = sum(a.get("chats", 0) for a in accounts.values())
+    chats = f" · {total_chats} claude.ai chat(s)" if total_chats else ""
     out = [f"# Claude Code work log — {day.isoformat()}", "",
            f"_Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} on `{cfg.device}` · "
-           f"{total_sessions} session(s) · devices: {', '.join(devices) or '—'}_", ""]
+           f"{total_sessions} session(s){chats} · devices: {', '.join(devices) or '—'}_", ""]
     if not accounts:
-        out += ["No Claude Code activity recorded for this day.", ""]
+        out += ["No Claude activity recorded for this day.", ""]
         return "\n".join(out)
 
-    head = "| Account | Sessions | Input | Output | Cache write | Cache read | Total |"
-    out += ["## Token usage by account", "", head, "|---|---:|---:|---:|---:|---:|---:|"]
-    grand = zero_tokens()
-    for name in sorted(accounts):
-        a = accounts[name]
-        t = a["tokens"]
-        _add(grand, t)
-        out.append(f"| {name} | {a['sessions']} | {_n(t['input'])} | {_n(t['output'])} | "
-                   f"{_n(t['cache_creation'])} | {_n(t['cache_read'])} | {_n(sum(t.values()))} |")
-    out.append(f"| **All** | **{total_sessions}** | **{_n(grand['input'])}** | **{_n(grand['output'])}** | "
-               f"**{_n(grand['cache_creation'])}** | **{_n(grand['cache_read'])}** | **{_n(sum(grand.values()))}** |")
-    out += ["", "### By model", "", "| Account | Model | Input | Output | Cache write | Cache read |",
-            "|---|---|---:|---:|---:|---:|"]
-    for name in sorted(accounts):
-        for model, t in sorted(accounts[name]["models"].items()):
-            out.append(f"| {name} | {model} | {_n(t['input'])} | {_n(t['output'])} | "
-                       f"{_n(t['cache_creation'])} | {_n(t['cache_read'])} |")
-    out += ["", "> Token counts are usage as logged by Claude Code, not a bill. "
-            "On Pro/Max plans they count against limits rather than cost money directly.", ""]
+    if total_sessions:
+        head = "| Account | Sessions | Input | Output | Cache write | Cache read | Total |"
+        out += ["## Token usage by account", "", head, "|---|---:|---:|---:|---:|---:|---:|"]
+        grand = zero_tokens()
+        for name in sorted(accounts):
+            a = accounts[name]
+            if not a["sessions"]:
+                continue  # chat-only account: the claude.ai export has no token data
+            t = a["tokens"]
+            _add(grand, t)
+            out.append(f"| {name} | {a['sessions']} | {_n(t['input'])} | {_n(t['output'])} | "
+                       f"{_n(t['cache_creation'])} | {_n(t['cache_read'])} | {_n(sum(t.values()))} |")
+        out.append(f"| **All** | **{total_sessions}** | **{_n(grand['input'])}** | **{_n(grand['output'])}** | "
+                   f"**{_n(grand['cache_creation'])}** | **{_n(grand['cache_read'])}** | "
+                   f"**{_n(sum(grand.values()))}** |")
+        out += ["", "### By model", "", "| Account | Model | Input | Output | Cache write | Cache read |",
+                "|---|---|---:|---:|---:|---:|"]
+        for name in sorted(accounts):
+            for model, t in sorted(accounts[name]["models"].items()):
+                out.append(f"| {name} | {model} | {_n(t['input'])} | {_n(t['output'])} | "
+                           f"{_n(t['cache_creation'])} | {_n(t['cache_read'])} |")
+        out += ["", "> Token counts are usage as logged by Claude Code, not a bill. "
+                "On Pro/Max plans they count against limits rather than cost money directly.", ""]
 
     out += ["## What I worked on", ""]
-    ordered = sorted(projects.values(), key=lambda p: (p.kind == "misc", -p.sessions, p.name))
+    ordered = sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -p.sessions, p.name))
     for p in ordered:
         where = f"`{p.remote['host']}/{p.remote['slug']}`" if p.remote else (
+            "claude.ai" if p.kind == "chat" else
             "folders: " + ", ".join(sorted(p.folders)) if p.folders else "no git repo")
+        work = [f"{p.sessions} session(s)"] if p.sessions else []
+        work += [f"{p.chats} chat(s)"] if p.chats else []
+        tokens = f"{_n(sum(p.tokens.values()))} tokens" if p.sessions else "no token data"
         out += [f"### {p.name}", "",
                 f"{where} · accounts: {', '.join(sorted(p.accounts))} · devices: {', '.join(sorted(p.devices))} · "
-                f"{p.sessions} session(s) · {_dur(p.minutes)} span · {_n(sum(p.tokens.values()))} tokens · "
+                f"{' · '.join(work)} · {_dur(p.minutes)} span · {tokens} · "
                 f"{len(p.files)} file(s) edited · {len(p.commits)} commit(s)", ""]
         out += summaries.get(p.key, {}).get("bullets") or plain_summary(p)
         out += [""]
+        if p.titles:
+            out += ["Chats:", ""] + [f"- {t}" for t in p.titles] + [""]
         if p.commits:
             out += ["Commits:", ""] + [f"- `{h}` {s}" for h, s in p.commits.items()] + [""]
     return "\n".join(out)
