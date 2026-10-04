@@ -1,4 +1,4 @@
-"""Command line interface: init, doctor, install-hook, hook, collect, report, serve, demo."""
+"""Command line interface: init, doctor, install-hook, hook, collect, import-chats, report, serve, demo."""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ import subprocess
 import sys
 from datetime import date, datetime, timedelta
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from . import __version__
 from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config
@@ -173,6 +174,22 @@ def cmd_collect(args) -> int:
     days = [end - timedelta(days=i) for i in reversed(range(args.days))]
     n = collect(cfg, days)
     print(f"collected {n} new/updated record(s) for {days[0]}..{days[-1]}")
+    from .chats import scan_downloads
+    for res in scan_downloads(cfg):  # after collect: the store lock is not re-entrant
+        print(res.message())
+    return 0
+
+
+def cmd_import_chats(args) -> int:
+    from .chats import ExportError, import_chats
+
+    cfg = load_config()
+    try:
+        res = import_chats(cfg, args.path.expanduser(), account=args.account, since=args.since)
+    except ExportError as exc:
+        print(f"✗ {exc}")
+        return 1
+    print(res.message())
     return 0
 
 
@@ -210,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--date", type=_parse_day, help="last day to collect (default today)")
     p.add_argument("--days", type=int, default=1, choices=range(1, 31), metavar="N", help="days back (1-30)")
     p.set_defaults(func=cmd_collect)
+    p = sub.add_parser("import-chats", help="import a claude.ai data export (conversations-*.zip)")
+    p.add_argument("path", type=Path, help="conversations-NNN.zip, conversations.json, or a folder with them")
+    p.add_argument("--account", help="worklog account to file the chats under (remembered for this login)")
+    p.add_argument("--since", type=_parse_day, help="skip messages before this day (YYYY-MM-DD)")
+    p.set_defaults(func=cmd_import_chats)
     p = sub.add_parser("report", help="build the daily report")
     p.add_argument("--date", type=_parse_day, help="YYYY-MM-DD, today (default) or yesterday")
     p.add_argument("--no-ai", action="store_true", help="skip claude -p summaries")

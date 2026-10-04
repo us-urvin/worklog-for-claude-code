@@ -17,6 +17,7 @@ You use Claude Code all day. At the end of it, this tool gives you a simple page
 - ✅ **What you worked on**: a short summary for each project
 - 📊 **How many tokens you used**: per day, per account and per model
 - 💻 **All in one place**: even if you use several computers or several Claude accounts
+- 💬 **Your claude.ai chats too** (optional): import claude.ai's data export to see chats next to your coding work
 
 It works in the background. You don't have to do anything after setup.
 
@@ -57,12 +58,13 @@ Mostly yes, with a few things you should know.
 - ✂️ **Only short notes are saved**: the first 300 characters of each prompt, token counts, file names and commit messages. Your files and Claude's replies are never saved, but a code snippet you paste into a prompt can end up in those 300 characters.
 - 🧹 **Common secrets are hidden (best effort)**: well-known API key formats, `password=…` / `token=…` pairs, e-mail addresses and IP addresses are replaced with `[REDACTED]` before saving. This can miss things, such as a password written in a normal sentence, so keep your data repo **private**.
 - 🤖 **Optional AI summaries** use your own Claude account (`claude -p`). Turn them off in Settings to keep everything fully local.
+- 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies, chat summaries and attachments are never saved.
 
 [More about privacy →](docs/GUIDE.md#privacy)
 
 ## Good to know
 
-- Works with **Claude Code only**, not claude.ai chat.
+- **Claude Code is tracked automatically.** claude.ai chats have no live connection: you import its data export on the **Sources** page (upload it, or let worklog pick it up from your Downloads folder). Exports have no token counts. See [claude.ai chats](docs/GUIDE.md#claudeai-chats).
 - **Linux only** for now (it uses systemd).
 - It reads Claude Code's local log files. Their format isn't official, so a Claude Code update could break it for a while.
 
