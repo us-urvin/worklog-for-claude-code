@@ -6,6 +6,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-04
+
 ### Added
 - Import claude.ai chats from claude.ai's data export (`conversations-*.zip`): `claude-worklog import-chats`,
   an upload button on the new **Sources** page, or an opt-in toggle that imports new exports from your Downloads
@@ -19,6 +21,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   placeholder for a future browser extension.
 - `[chat]` config section: `account`, `watch_downloads`, `downloads_dir`.
 - Demo data now includes a few claude.ai chats.
+
+### Changed
+- README privacy section reworded to match what the code does: redaction is best effort, and prompts are
+  kept up to 300 characters, so a pasted snippet can end up in the data repo.
+
+### Fixed
+- README links (guide, security, contributing, changelog, license) now work on the PyPI project page.
 
 ## [0.1.0] - 2026-09-26
 
@@ -41,5 +50,6 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/us-urvin/worklog-for-claude-code/releases/tag/v0.1.0

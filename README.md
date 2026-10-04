@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE)
 
 > Independent community project, not affiliated with or endorsed by Anthropic.
 
@@ -48,7 +48,7 @@ claude-worklog install-service
 
 Done. Your work log fills up as you use Claude Code.
 
-> Using more than one computer? Put the data folder in a **private** GitHub/GitLab repo so all your machines share it. See [Full setup](docs/GUIDE.md#full-setup).
+> Using more than one computer? Put the data folder in a **private** GitHub/GitLab repo so all your machines share it. See [Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup).
 
 ## Is my data private?
 
@@ -60,19 +60,19 @@ Mostly yes, with a few things you should know.
 - 🤖 **Optional AI summaries** use your own Claude account (`claude -p`). Turn them off in Settings to keep everything fully local.
 - 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies, chat summaries and attachments are never saved.
 
-[More about privacy →](docs/GUIDE.md#privacy)
+[More about privacy →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 
 ## Good to know
 
-- **Claude Code is tracked automatically.** claude.ai chats have no live connection: you import its data export on the **Sources** page (upload it, or let worklog pick it up from your Downloads folder). Exports have no token counts. See [claude.ai chats](docs/GUIDE.md#claudeai-chats).
+- **Claude Code is tracked automatically.** claude.ai chats have no live connection: you import its data export on the **Sources** page (upload it, or let worklog pick it up from your Downloads folder). Exports have no token counts. See [claude.ai chats](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#claudeai-chats).
 - **Linux only** for now (it uses systemd).
 - It reads Claude Code's local log files. Their format isn't official, so a Claude Code update could break it for a while.
 
 ## More
 
-- 📖 [Full guide](docs/GUIDE.md): several computers, several accounts, all commands, uninstalling
-- 🐛 [Report a bug](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose) · 🔐 [Security](SECURITY.md) · 🤝 [Contributing](CONTRIBUTING.md) · 📝 [Changelog](CHANGELOG.md)
+- 📖 [Full guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md): several computers, several accounts, all commands, uninstalling
+- 🐛 [Report a bug](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose) · 🔐 [Security](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md) · 🤝 [Contributing](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CONTRIBUTING.md) · 📝 [Changelog](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md)
 
 ## License
 
-[MIT](LICENSE) © 2026 Urvin
+[MIT](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE) © 2026 Urvin

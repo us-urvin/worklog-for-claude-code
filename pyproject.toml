@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 # Distribution name on PyPI. The command stays `claude-worklog` and the package stays `worklog`.
 name = "worklog-for-claude-code"
-version = "0.1.0"
-description = "Daily work log and token report across Claude Code accounts and devices, synced through your own private git repo"
+version = "0.2.0"
+description = "Daily work log and token report across Claude Code accounts and devices, plus imported claude.ai chats, synced through your own private git repo"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Urvin" }]
-keywords = ["claude-code", "claude", "worklog", "time-tracking", "token-usage", "developer-tools", "daily-report"]
+keywords = ["claude-code", "claude", "claude-ai", "worklog", "time-tracking", "token-usage", "developer-tools", "daily-report"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
