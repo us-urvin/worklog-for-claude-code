@@ -201,7 +201,11 @@ def test_record_redacts_truncates_and_never_holds_claudes_text(cfg):
 
 
 def test_untitled_chat_and_assistant_only_day():
-    days, _ = chats.split_days(conv("c1", [human("hi", ts(D, 9))], name=""))
+    long = "please help me plan the database migration for the orders service " * 3
+    days, _ = chats.split_days(conv("c1", [human(long + "\nsecond line", ts(D, 9))], name=""))
+    title = chats.build_record(days[D], "personal", load_cfg_stub())["title"]
+    assert title.startswith("please help me plan") and title.endswith("…") and len(title) <= 80
+    days, _ = chats.split_days(conv("c3", [assistant(ts(D, 9), [tool("Bash", "toolu_01X")])], name=""))
     assert chats.build_record(days[D], "personal", load_cfg_stub())["title"] == "Untitled chat"
     days, _ = chats.split_days(conv("c2", [assistant(ts(D, 9))]))
     assert chats.build_record(days[D], "personal", load_cfg_stub()) is None
@@ -405,3 +409,66 @@ def test_sources_page_and_settings(server, cfg, monkeypatch):
     assert new.chat_account == "work" and new.watch_downloads and new.downloads_dir == Path.home() / "dl"
     assert app.post("/sources/settings", {"account": "work", "downloads": "/etc"})[1]
     assert app.post("/sources/settings", {"account": "ghost"})[1]
+
+
+# ------------------------------------------------------------------ 0.2.1: summaries, findability, per-chat view
+def test_chat_summary_is_opt_in_cleaned_and_redacted(cfg, tmp_path):
+    key = "sk-ant-api03-" + "b" * 30
+    summary = f"**Conversation overview**\n\nThe person built a *Trello* sync and pasted {key}. " + "More detail. " * 80
+    z = write_zip(tmp_path / "c.zip", [dict(conv("c1", [human("sync my sheet", ts(D, 9))]), summary=summary)])
+    path = f"records/{D.isoformat()}/dev1/personal/chat-c1.json"
+    chats.import_chats(cfg, z)
+    assert "summary" not in records(cfg)[path]  # off by default: Claude's text is not stored
+
+    cfg.keep_chat_summaries = True
+    assert chats.import_chats(cfg, z).written == 1  # re-import adds it
+    kept = records(cfg)[path]["summary"]
+    assert kept.startswith("The person built a Trello sync") and "**" not in kept and "overview" not in kept
+    assert key not in kept and "[REDACTED]" in kept
+    assert len(kept) <= chats.MAX_SUMMARY_CHARS and kept.endswith("…")
+
+    cfg.keep_chat_summaries = False
+    assert chats.strip_summaries(cfg) == 1 and "summary" not in records(cfg)[path]
+    assert chats.strip_summaries(cfg) == 0
+
+
+def test_latest_day_and_chat_days(cfg, tmp_path):
+    later = D + timedelta(days=3)
+    convs = [conv("c1", [human("a", ts(D, 9))]), conv("c2", [human("b", ts(D, 10)), human("c", ts(later, 11))]),
+             conv("c3", [human("d", ts(later, 12))])]
+    res = chats.import_chats(cfg, write_zip(tmp_path / "c.zip", convs))
+    assert res.latest_day == later and f"Latest chat: {later:%a %d %b %Y}" in res.message()
+    assert chats.chat_days(cfg.store_repo) == [(later, 2), (D, 2)]
+    assert chats.chat_days(cfg.store_repo, limit=1) == [(later, 2)]
+
+
+def test_day_page_lists_each_chat_and_marks_chat_days(cfg, tmp_path):
+    convs = [conv("c1", [human("first ask", ts(D, 9)), human("second ask", ts(D, 9, 5))], name="Trello sync"),
+             conv("c2", [human("price question", ts(D, 15))], name="Keel pricing")]
+    chats.import_chats(cfg, write_zip(tmp_path / "c.zip", convs))
+    body, _ = web.page_day(web.App(8765), cfg, D)
+    assert body.index("Trello sync") < body.index("Keel pricing")  # in time order, each with its own messages
+    assert "first ask" in body and "second ask" in body and "price question" in body
+    assert "claude.ai chats</span>" in body and "2 claude.ai chats" in body and "<circle" in body
+    later, _ = web.page_day(web.App(8765), cfg, D + timedelta(days=2))
+    assert f'href="/?d={D.isoformat()}"' in later and "latest claude.ai chats" in later
+
+    accounts, projects = aggregate(list(records(cfg).values()))
+    text = render(D, cfg, accounts, projects, {})
+    assert "- Trello sync: first ask" in text and "- Keel pricing: price question" in text
+
+
+def test_turning_summaries_off_in_the_ui_removes_them(server, cfg, monkeypatch):
+    app, _ = server
+    cfg.keep_chat_summaries = True
+    monkeypatch.setattr(web, "save_config", lambda c: None)
+    removed = []
+    monkeypatch.setattr(chats, "strip_summaries", lambda c: removed.append(c) or 3)
+    loc, err, _ = app.post("/sources/settings", {"account": "personal"})
+    assert err is None and loc == "/sources?ok=chat_saved" and not cfg.keep_chat_summaries
+    for _ in range(100):
+        if app.jobs.snapshot()["finished"]:
+            break
+        time.sleep(0.05)
+    assert removed and "Removed claude.ai summaries from 3" in app.jobs.snapshot()["message"]
+    assert "Days with chats" not in web.page_sources(app, cfg)  # nothing imported yet

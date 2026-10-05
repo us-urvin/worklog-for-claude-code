@@ -6,6 +6,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-05
+
+### Added
+- Optional: keep claude.ai's own summary of each chat (`[chat] keep_summaries`, a checkbox on the Sources page,
+  off by default). Shortened to 600 characters and redacted; turning it off removes them again.
+- Days with claude.ai chats get a dot in the 14-day chart (and a chat count in its tooltip), the Sources page
+  lists them, an empty day links to your latest chats, and the import message names the latest chat day.
+
+### Changed
+- Each claude.ai chat is shown on its own, with its title, time and either its summary or your first messages,
+  instead of one merged list of prompts. Untitled chats are named after your first message.
+- AI summaries ("Write summaries") get each chat's title, messages and kept summary, so they describe what was done.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added
@@ -50,6 +63,7 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/us-urvin/worklog-for-claude-code/releases/tag/v0.1.0

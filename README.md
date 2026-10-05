@@ -58,7 +58,7 @@ Mostly yes, with a few things you should know.
 - ✂️ **Only short notes are saved**: the first 300 characters of each prompt, token counts, file names and commit messages. Your files and Claude's replies are never saved, but a code snippet you paste into a prompt can end up in those 300 characters.
 - 🧹 **Common secrets are hidden (best effort)**: well-known API key formats, `password=…` / `token=…` pairs, e-mail addresses and IP addresses are replaced with `[REDACTED]` before saving. This can miss things, such as a password written in a normal sentence, so keep your data repo **private**.
 - 🤖 **Optional AI summaries** use your own Claude account (`claude -p`). Turn them off in Settings to keep everything fully local.
-- 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies, chat summaries and attachments are never saved.
+- 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies and attachments are never saved. If you want, you can also keep claude.ai's own short summary of each chat (off by default).
 
 [More about privacy →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 

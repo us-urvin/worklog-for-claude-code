@@ -9,8 +9,9 @@ e-mails links to several zips; `conversations-NNN.zip` holds `conversations.json
 
 The format is not a documented stable API, so parsing is defensive. Only your own typed
 messages (redacted, shortened), chat titles, tool names and edited file paths are kept.
-Claude's replies, the chat `summary`, thinking, tool input/output and attachment contents
-are never read into a record. There are no token counts in the export.
+Claude's replies, thinking, tool input/output and attachment contents are never read into a
+record. The chat `summary` (written by Claude) is kept, shortened and redacted, only when the
+user turns on `[chat] keep_summaries`. There are no token counts in the export.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ SOURCE = "claude.ai"
 CHAT_PROJECT = "claude.ai chat"
 MAX_JSON_BYTES = 512 * 1024 * 1024  # uncompressed conversations.json; real exports are a few MB
 MAX_TITLE_CHARS = 120
+MAX_SUMMARY_CHARS = 600
 SETTLE_SECONDS = 10  # a download modified more recently than this may still be in progress
 SANDBOX = "/home/claude/"  # where Claude's own computer in claude.ai keeps project files
 EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "create_file", "str_replace",
@@ -146,6 +148,7 @@ class ChatDay:
     files: set[str] = field(default_factory=set)
     folders: Counter = field(default_factory=Counter)
     tool_ids: set[str] = field(default_factory=set)  # only used to spot Claude Code sessions; never written
+    summary: str = ""  # claude.ai's own summary of the whole chat; written only if keep_chat_summaries
 
     def touch(self, ts: datetime) -> None:
         self.first = ts if self.first is None or ts < self.first else self.first
@@ -172,6 +175,7 @@ def split_days(conv: dict, since: date | None = None) -> tuple[dict[date, ChatDa
     title = conv.get("name") if isinstance(conv.get("name"), str) else ""
     acct = conv.get("account") if isinstance(conv.get("account"), dict) else {}
     updated = conv.get("updated_at") if isinstance(conv.get("updated_at"), str) else ""
+    summary = conv.get("summary") if isinstance(conv.get("summary"), str) else ""
     for m in conv["chat_messages"]:
         if not isinstance(m, dict):
             bad += 1
@@ -186,7 +190,7 @@ def split_days(conv: dict, since: date | None = None) -> tuple[dict[date, ChatDa
         cd = days.get(day)
         if cd is None:
             uid = acct.get("uuid") if isinstance(acct.get("uuid"), str) else None
-            cd = days[day] = ChatDay(conv["uuid"], day, title, uid, updated)
+            cd = days[day] = ChatDay(conv["uuid"], day, title, uid, updated, summary=summary)
             seen[day] = set()
         cd.touch(ts)
         cd.messages += 1
@@ -210,12 +214,27 @@ def split_days(conv: dict, since: date | None = None) -> tuple[dict[date, ChatDa
     return days, bad
 
 
+def _one_line(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:") + "…"
+
+
+def clean_summary(text: str) -> str:
+    """claude.ai's Markdown chat summary -> one short, redacted paragraph."""
+    text = re.sub(r"(?im)^\s*#+\s.*$", " ", text)
+    text = re.sub(r"[*_`#>]+", "", text)
+    text = re.sub(r"(?i)^\s*conversation overview\s*", "", text.strip())
+    return _one_line(redact(text), MAX_SUMMARY_CHARS)
+
+
 def build_record(cd: ChatDay, account: str, cfg: Config) -> dict | None:
     if not cd.prompts and not cd.tool_calls:
         return None  # only Claude's messages that day: nothing of yours to log
     folder = cd.folders.most_common(1)[0][0] if cd.folders else None
-    title = redact(" ".join(cd.title.split()))[:MAX_TITLE_CHARS] or "Untitled chat"
-    return {
+    title = redact(" ".join(cd.title.split()))[:MAX_TITLE_CHARS]
+    if not title:  # untitled chat: name it after your first message
+        title = _one_line(redact(cd.prompts[0].splitlines()[0]), 80) if cd.prompts else "Untitled chat"
+    record = {
         "schema": SCHEMA,
         "source": SOURCE,
         "session_id": f"chat-{cd.uuid}",
@@ -239,6 +258,9 @@ def build_record(cd: ChatDay, account: str, cfg: Config) -> dict | None:
         "commits": [],
         "conversation_updated_at": cd.updated_at,
     }
+    if cfg.keep_chat_summaries and cd.summary.strip():
+        record["summary"] = clean_summary(cd.summary)
+    return record
 
 
 def local_tool_ids(cfg: Config, days: set[date]) -> set[str]:
@@ -307,6 +329,7 @@ class ImportResult:
     stale: int = 0  # an older export than what the store already holds
     bad: int = 0  # malformed chats or messages, skipped
     account: str = ""
+    latest_day: date | None = None  # most recent day that has a chat record
 
     def message(self) -> str:
         out = (f"Imported {self.chats} chat(s) as {self.days} day record(s) for {self.account}; "
@@ -314,7 +337,10 @@ class ImportResult:
         extra = [f"{n} {what}" for n, what in ((self.duplicates, "already counted as Claude Code sessions"),
                                                (self.stale, "kept because the store has a newer copy"),
                                                (self.bad, "malformed entries skipped")) if n]
-        return out + (" (" + ", ".join(extra) + ")" if extra else "") + "."
+        out += (" (" + ", ".join(extra) + ")" if extra else "") + "."
+        if self.latest_day:
+            out += f" Latest chat: {self.latest_day:%a %d %b %Y}."
+        return out
 
 
 def _account_for(cfg: Config, convs: list[dict], account: str | None, state: dict) -> str:
@@ -356,6 +382,7 @@ def import_chats(cfg: Config, path: Path, account: str | None = None, since: dat
             if record is None:
                 continue
             res.days += 1
+            res.latest_day = max(res.latest_day or cd.day, cd.day)
             fname = f"chat-{_SAFE.sub('_', cd.uuid)}.json"
             rel = f"records/{cd.day.isoformat()}/{cfg.device}/{res.account}/{fname}"
             try:
@@ -435,3 +462,33 @@ def scan_downloads(cfg: Config) -> list[ImportResult]:
         except (OSError, TimeoutError) as exc:  # retried on the next sync
             log.warning("chat import from %s failed: %s", p.name, exc)
     return results
+
+
+def chat_days(store_path: Path, limit: int = 10) -> list[tuple[date, int]]:
+    """Most recent days with claude.ai chat records in the store: [(day, number of chats)]."""
+    per_day: dict[date, set[str]] = {}
+    for p in store_path.glob("records/*/*/*/chat-*.json"):
+        try:
+            day = date.fromisoformat(p.parts[-4])
+        except ValueError:
+            continue
+        per_day.setdefault(day, set()).add(p.name)
+    return [(d, len(per_day[d])) for d in sorted(per_day, reverse=True)[:limit]]
+
+
+def strip_summaries(cfg: Config) -> int:
+    """Remove kept claude.ai summaries from this device's chat records (when the user turns them off)."""
+    store = GitStore(cfg.store_repo)
+    changed = 0
+    with store.lock():
+        store.pull()
+        for p in sorted(store.path.glob(f"records/*/{cfg.device}/*/chat-*.json")):
+            try:
+                rec = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(rec, dict) and rec.pop("summary", None) is not None:
+                changed += store.write_json(str(p.relative_to(store.path)), rec)
+        if changed:
+            store.commit_and_push(f"remove chat summaries {cfg.device}: {changed} record(s)")
+    return changed

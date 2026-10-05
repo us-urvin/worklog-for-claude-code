@@ -77,6 +77,7 @@ ai_timeout_seconds = 180
 account = ""                  # worklog account for imported chats; empty = the first account
 watch_downloads = false       # import new conversations-*.zip files found in downloads_dir on each sync
 downloads_dir = ""            # empty = your Downloads folder
+keep_summaries = false        # also keep claude.ai's own per-chat summary (written by Claude), shortened and redacted
 """
 
 
@@ -114,6 +115,7 @@ class Config:
     chat_account: str | None = None
     watch_downloads: bool = False
     downloads_dir: Path | None = None
+    keep_chat_summaries: bool = False
     path: Path = field(default=CONFIG_PATH)
 
     @property
@@ -270,6 +272,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
+        keep_chat_summaries=bool(chat.get("keep_summaries", False)),
         path=path,
     )
     if cfg.account(cfg.summarizer_account) is None:
@@ -318,7 +321,8 @@ def dump_config(cfg: Config) -> str:
             "[report]", f"use_ai = {b(cfg.use_ai)}", f"summarizer_account = {q(cfg.summarizer_account)}",
             f"claude_bin = {q(cfg.claude_bin)}", f"ai_timeout_seconds = {cfg.ai_timeout}", "",
             "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
-            f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}", ""]
+            f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
+            f"keep_summaries = {b(cfg.keep_chat_summaries)}", ""]
     return "\n".join(out)
 
 
