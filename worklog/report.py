@@ -42,6 +42,7 @@ class ProjectDay:
     branches: set[str] = field(default_factory=set)
     chats: int = 0  # claude.ai chat records (no token data)
     titles: list[str] = field(default_factory=list)  # chat titles, in order seen
+    chat_items: list[dict] = field(default_factory=list)  # one per chat: start, title, prompts, summary
 
 
 def is_chat(r: dict) -> bool:
@@ -94,6 +95,9 @@ def aggregate(records: list[dict]):
             p.chats += 1
             if r.get("title") and r["title"] not in p.titles:
                 p.titles.append(str(r["title"]))
+            p.chat_items.append({"start": (r.get("start") or "")[11:16], "title": str(r.get("title") or "Chat"),
+                                 "prompts": [q for q in r.get("prompts") or [] if isinstance(q, str)],
+                                 "summary": str(r.get("summary") or "")})
         else:
             p.sessions += 1
         p.minutes += int(r.get("span_minutes") or 0)
@@ -108,6 +112,7 @@ def aggregate(records: list[dict]):
             p.commits.setdefault(c.get("hash", ""), c.get("subject", ""))
     for p in projects.values():
         p.prompts.sort()
+        p.chat_items.sort(key=lambda c: c["start"])
     return accounts, projects
 
 
@@ -129,10 +134,13 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
         return None
     data = {
         "project": p.name, "kind": p.kind, "branches": sorted(p.branches), "folders": sorted(p.folders),
-        "chat_titles": p.titles,
+        "chats": [{"title": c["title"], "your_messages": c["prompts"], "chat_summary": c["summary"]}
+                  for c in p.chat_items],
         "prompts_in_order": [q for _, q in p.prompts],
         "commits": list(p.commits.values()), "files_edited": sorted(p.files)[:80],
     }
+    if p.chat_items:
+        data.pop("prompts_in_order")  # already grouped per chat
     blob = json.dumps(data, ensure_ascii=False)[:_MAX_AI_INPUT_CHARS]
     prompt = (
         f"You are writing a developer's end-of-day work log for {day.isoformat()}. "
@@ -158,7 +166,16 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
     return [("- " + b[2:]) for b in bullets] or None
 
 
+def chat_line(c: dict) -> str:
+    """One chat as a short line: its summary if kept, else your first message."""
+    detail = c["summary"] or (c["prompts"][0].splitlines()[0] if c["prompts"] else "")
+    detail = detail if len(detail) <= 220 else detail[:219].rsplit(" ", 1)[0] + "…"
+    return f"{c['title']}: {detail}" if detail and detail != c["title"] else c["title"]
+
+
 def plain_summary(p: ProjectDay) -> list[str]:
+    if p.chat_items:
+        return [f"- {chat_line(c)}" for c in p.chat_items]
     lines = [f"- {q.splitlines()[0][:140]}" for _, q in p.prompts[:6]]
     if len(p.prompts) > 6:
         lines.append(f"- …and {len(p.prompts) - 6} more prompt(s)")
@@ -234,8 +251,8 @@ def render(day: date, cfg: Config, accounts: dict, projects: dict[str, ProjectDa
                 f"{len(p.files)} file(s) edited · {len(p.commits)} commit(s)", ""]
         out += summaries.get(p.key, {}).get("bullets") or plain_summary(p)
         out += [""]
-        if p.titles:
-            out += ["Chats:", ""] + [f"- {t}" for t in p.titles] + [""]
+        if p.chat_items and summaries.get(p.key):  # AI bullets above; still list the chats themselves
+            out += ["Chats:", ""] + [f"- {chat_line(c)}" for c in p.chat_items] + [""]
         if p.commits:
             out += ["Commits:", ""] + [f"- `{h}` {s}" for h, s in p.commits.items()] + [""]
     return "\n".join(out)

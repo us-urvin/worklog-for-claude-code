@@ -104,7 +104,9 @@ Claude Code is collected automatically. claude.ai chats (web, desktop and mobile
    - turn on **Import from Downloads** on the Sources page: every sync (after each Claude Code session, every hour, and when you press Sync now) imports new `conversations-*.zip` files it finds in your Downloads folder, or
    - run `claude-worklog import-chats ~/Downloads/conversations-000.zip` (a `conversations.json` or a folder holding several parts works too; `--account work` files them under another account and remembers that for this claude.ai login; `--since 2026-09-01` skips older messages).
 
-Chats show up on each day under **claude.ai chat**, or under the project folder when Claude worked on files in its own sandbox (`/home/claude/<project>`). A chat that spans several days is split by your local date.
+Chats show up on the day they happened (not on the day you import them), under **claude.ai chat**, or under the project folder when Claude worked on files in its own sandbox (`/home/claude/<project>`). Each chat is listed with its title and time, and a chat that spans several days is split by your local date. Days with chats have a dot under their bar in the 14-day chart, the Sources page lists them, and an empty day links to your latest chats.
+
+**What each chat shows.** By default: its title (or your first message, for untitled chats) and your first few messages. Turn on **Also keep claude.ai's own summary of each chat** on the Sources page and re-import, and each chat also shows the short summary claude.ai wrote for it, which usually says best what you did. **Write summaries** on a day turns all of it into a few written bullets.
 
 **Things to know**
 - **No token counts.** The export doesn't include usage, so chats show what you did, not tokens.
@@ -113,7 +115,7 @@ Chats show up on each day under **claude.ai chat**, or under the project folder 
 - **Work accounts.** On Team and Enterprise plans, the export may only be available to the organization's admins.
 - **Downloads folder.** The toggle is off by default, so nothing there is read unless you turn it on. Only files named `conversations*.zip` / `conversations*.json` are opened, their content is checked (a ChatGPT export, which also has a `conversations.json`, is refused), half-finished downloads are skipped, and files are never moved or deleted. The folder comes from `XDG_DOWNLOAD_DIR` (usually `~/Downloads`) unless you set another one.
 
-The settings live in the `[chat]` section of the config file (`account`, `watch_downloads`, `downloads_dir`).
+The settings live in the `[chat]` section of the config file (`account`, `watch_downloads`, `downloads_dir`, `keep_summaries`).
 
 ## Command line
 
@@ -153,9 +155,9 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 - your first 30 prompts in the session, **cut to 300 characters and redacted**,
 - paths of files Claude edited (relative to the repo, or to your home folder outside a repo), and the short hash and redacted subject of **your own** commits that day.
 
-**Imported claude.ai chats.** One record per chat per day: the chat title (redacted, at most 120 characters), your own messages (first 30, **cut to 300 characters and redacted**), the number of messages, tool names, and names of files Claude edited in its sandbox. The export's account id is turned into a short one-way hash in a local file (`~/.local/state/claude-worklog/chats.json`, mode 600) to remember which worklog account it belongs to, and is never written to the data repo. worklog only opens `conversations.json`; the export's other files, including your login history, are never read.
+**Imported claude.ai chats.** One record per chat per day: the chat title (redacted, at most 120 characters), your own messages (first 30, **cut to 300 characters and redacted**), the number of messages, tool names, and names of files Claude edited in its sandbox. Only if you turn on `keep_summaries`: claude.ai's own summary of the chat (written by Claude), Markdown removed, redacted and cut to 600 characters; turning it off again removes them from this device's records. The export's account id is turned into a short one-way hash in a local file (`~/.local/state/claude-worklog/chats.json`, mode 600) to remember which worklog account it belongs to, and is never written to the data repo. worklog only opens `conversations.json`; the export's other files, including your login history, are never read.
 
-**What is never stored.** File contents, Claude's replies, tool output, command output, your git e-mail, credentials. From claude.ai exports also: chat summaries, Claude's thinking, attachments and their extracted text. Account ids and login e-mails (used to tell accounts apart) stay in a local file (`~/.local/state/claude-worklog/accounts.json`, mode 600) and are never written to the data repo.
+**What is never stored.** File contents, Claude's replies, tool output, command output, your git e-mail, credentials. From claude.ai exports also: Claude's thinking, chat summaries (unless you turn on `keep_summaries`), attachments and their extracted text. Account ids and login e-mails (used to tell accounts apart) stay in a local file (`~/.local/state/claude-worklog/accounts.json`, mode 600) and are never written to the data repo.
 
 **What is redacted.** Before anything is written, prompts and commit subjects are scrubbed of common API keys (Anthropic, OpenAI, GitHub, GitLab, Bitbucket, AWS, Slack, Google), JWTs, bearer tokens, private keys, `password=…`-style pairs, credentials in URLs, e-mail addresses and IPv4 addresses. This is **best effort**, which is why the data repo **must be private**.
 

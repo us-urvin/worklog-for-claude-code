@@ -201,6 +201,8 @@ code,.cmd{font-family:"Ubuntu Mono","DejaVu Sans Mono",monospace;font-size:.9em}
 .cmd{display:block;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto;white-space:pre}
 .state-ok{color:var(--ok)}.state-bad{color:var(--bad)}.muted{color:var(--muted)}
 .empty{padding:28px;border:1px dashed var(--rule);border-radius:10px;text-align:center;color:var(--muted)}
+ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin:2px 0 0;color:var(--muted);font-size:.92rem}
+.chatsum{color:var(--muted);font-size:.92rem;max-width:70ch;margin-top:2px}
 @media (prefers-reduced-motion:no-preference){.bar{transition:opacity .15s}a:hover .bar{opacity:.8}}
 """
 
@@ -243,8 +245,10 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
 
 
 # ================================================================== pages
-def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], selected: date) -> str:
-    w, h, top, bottom = 700, 130, 8, 22
+def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], selected: date,
+           chat_counts: dict[date, int] | None = None) -> str:
+    chat_counts = chat_counts or {}
+    w, h, top, bottom = 700, 136, 8, 28
     peak = max((sum(v.values()) for _, v in history), default=0) or 1
     slot = w / len(history)
     bw = slot * 0.62
@@ -269,17 +273,44 @@ def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], sele
         label_fill = "var(--ink)" if is_sel else "var(--muted)"
         mark = (f'<rect x="{x - 3:.1f}" y="{top - 4}" width="{bw + 6:.1f}" height="{h - bottom - top + 6}" rx="4" '
                 f'fill="none" stroke="var(--accent)" stroke-width="1.5"/>') if is_sel else ""
-        tip = f"{d:%a %d %b}: {_n(total)} tokens" + "".join(f", {k} {_n(v)}" for k, v in per.items() if v)
+        n_chats = chat_counts.get(d, 0)
+        tip = (f"{d:%a %d %b}: {_n(total)} tokens" + "".join(f", {k} {_n(v)}" for k, v in per.items() if v)
+               + (f", {n_chats} claude.ai chat{'s' * (n_chats != 1)}" if n_chats else ""))
+        if n_chats:  # chats have no tokens, so mark the day under its bar
+            rects.append(f'<circle cx="{x + bw / 2:.1f}" cy="{h - bottom + 7}" r="3" fill="var(--accent)"/>')
         parts.append(f'<a href="/?d={d.isoformat()}"><title>{e(tip)}</title>{mark}{"".join(rects)}'
                      f'<rect x="{i * slot:.1f}" y="0" width="{slot:.1f}" height="{h}" fill="transparent"/>'
                      f'<text x="{x + bw / 2:.1f}" y="{h - 6}" text-anchor="middle" font-size="11" '
                      f'font-weight="{label_weight}" fill="{label_fill}">{d.day}</text></a>')
     legend = "".join(f'<span><i style="background:{COLORS[i % len(COLORS)]}"></i>{e(n)}</span>'
                      for i, n in enumerate(accounts))
+    if any(chat_counts.get(d) for d, _ in history):
+        legend += '<span><i style="background:var(--accent);border-radius:50%"></i>claude.ai chats</span>'
     return (f'<div class="strip"><div class="legend">{legend or "<span>No activity yet</span>"}'
             f'<span style="margin-left:auto">Last {len(history)} days, peak {_short(peak) if peak > 1 else 0} tokens</span></div>'
             f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Tokens per day for the last {len(history)} days">'
             f'{"".join(parts)}</svg></div>')
+
+
+def _chat_list(chat_items: list[dict], open_: bool) -> str:
+    """Each chat with its title, time, and claude.ai's summary or your first messages."""
+    out = []
+    for c in chat_items:
+        if c["summary"]:
+            body = f'<div class="chatsum">{e(c["summary"])}</div>'
+        else:
+            msgs = [q.splitlines()[0][:160] for q in c["prompts"][:3] if q.strip()]
+            more = len(c["prompts"]) - len(msgs)
+            body = ('<ul class="msgs">' + "".join(f"<li>{e(m)}</li>" for m in msgs)
+                    + (f'<li class="muted">…and {more} more message{"s" * (more != 1)}</li>' if more > 0 else "")
+                    + "</ul>") if msgs else ""
+        when = f' <span class="muted">{e(c["start"])}</span>' if c["start"] else ""
+        out.append(f'<li><b>{e(c["title"])}</b>{when}{body}</li>')
+    n = len(chat_items)
+    lst = f'<ul class="chats">{"".join(out)}</ul>'
+    if open_:
+        return lst
+    return f'<details><summary>{n} chat{"s" * (n != 1)}</summary>{lst}</details>'
 
 
 def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
@@ -293,9 +324,12 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
 
     history_days = [day - timedelta(days=i) for i in reversed(range(14))]
     history, names = [], [a.name for a in cfg.accounts]
+    chat_counts: dict[date, int] = {}
     for d in history_days:
         per: dict[str, int] = {}
         for r in store.iter_json(f"records/{d.isoformat()}"):
+            if r.get("source") == "claude.ai":
+                chat_counts[d] = chat_counts.get(d, 0) + 1
             name = r.get("account", "?")
             per[name] = per.get(name, 0) + sum(v for v in (r.get("tokens") or {}).values() if isinstance(v, int))
             if name not in names:
@@ -321,7 +355,12 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
                f'<button class="quiet"{busy}>{"Rewrite summaries" if saved else "Write summaries"}</button></form>{jump}</div>')
 
     if not records:
-        body = (head + '<p class="lede">Nothing recorded for this day yet.</p>' + _chart(history, names, day)
+        latest = chats.chat_days(store.path, limit=1)
+        if latest and latest[0][0] != day:
+            d0, n0 = latest[0]
+            head += (f'<p class="muted" style="margin:10px 0 0">Your latest claude.ai chats are on '
+                     f'<a href="/?d={d0.isoformat()}">{d0:%a %d %b %Y}</a> ({n0}).</p>')
+        body = (head + '<p class="lede">Nothing recorded for this day yet.</p>' + _chart(history, names, day, chat_counts)
                 + '<div class="empty">Sessions appear here after a Claude Code session ends, or when you press '
                   '<b>Sync now</b>. Other devices show up once they have synced. claude.ai chats appear after you '
                   '<a href="/sources">import an export</a>.</div>' + actions)
@@ -346,7 +385,13 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         bullets = s["bullets"] if s else plain_summary(p)
         src = ("Summary by Claude" if s and s.get("source") == "ai" else
                "Your prompts. Press “Write summaries” for a written summary." if not s else "Your prompts")
-        items = "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets)
+        items = ("<ul>" + "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets) + "</ul>"
+                 if s or not p.chat_items else "")
+        if p.chat_items:
+            if not s:
+                src = ("claude.ai's summary of each chat, or your first messages. "
+                       "Press “Write summaries” for a written summary of the day.")
+            items += _chat_list(p.chat_items, open_=not s)
         where = (f"{e(p.remote['host'])}/{e(p.remote['slug'])}" if p.remote
                  else "From your claude.ai export" + (" · files in Claude's sandbox" if p.folders else "")
                  if p.kind == "chat"
@@ -359,9 +404,6 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         facts += [("Files edited", str(len(p.files)))] if p.files or p.sessions else []
         dl = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts)
         extra = ""
-        if p.titles:
-            extra += (f'<details><summary>{len(p.titles)} chat{"s" * (len(p.titles) != 1)}</summary><ul>'
-                      + "".join(f"<li>{e(t)}</li>" for t in p.titles) + "</ul></details>")
         if p.commits:
             extra += (f'<details><summary>{len(p.commits)} commit{"s" * (len(p.commits) != 1)}</summary><ul>'
                       + "".join(f"<li><code>{e(h)}</code> {e(sub)}</li>" for h, sub in p.commits.items()) + "</ul></details>")
@@ -369,7 +411,7 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
             extra += ('<details><summary>Files edited</summary><ul>'
                       + "".join(f"<li><code>{e(f)}</code></li>" for f in sorted(p.files)[:60]) + "</ul></details>")
         entries.append(f'<article class="entry"><h3>{e(p.name)}</h3><div class="where">{where}</div>'
-                       f'<ul>{items}</ul><div class="src">{e(src)}</div><dl class="facts">{dl}</dl>{extra}</article>')
+                       f'{items}<div class="src">{e(src)}</div><dl class="facts">{dl}</dl>{extra}</article>')
 
     acct_rows = "".join(
         f'<tr><td><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;'
@@ -388,7 +430,7 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
              f'<p class="muted" style="font-size:.8rem;margin:10px 0 0">Usage as logged by Claude Code, not a bill.</p></div></aside>')
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
-    body = (head + lede + _chart(history, names, day) + actions
+    body = (head + lede + _chart(history, names, day, chat_counts) + actions
             + f'<div class="cols" style="margin-top:26px"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>')
     return body, None
 
@@ -427,6 +469,14 @@ def page_sources(app: App, cfg: Config) -> str:
                      + (f' · {waiting} new export{"s" * (waiting != 1)} waiting for the next sync' if waiting else ""))
     acct_opts = "".join(f'<option{" selected" if a.name == cfg.chats_account else ""}>{e(a.name)}</option>'
                         for a in cfg.accounts)
+    days = chats.chat_days(cfg.store_repo, limit=12) if _store(cfg) else []
+    summ_note = (", plus claude.ai's own short summary of each chat (turned on below)"
+                 if cfg.keep_chat_summaries else "")
+    day_links = ""
+    if days:
+        day_links = ('<p style="margin-bottom:4px">Days with chats:</p><div class="row" style="margin-top:0;gap:6px">'
+                     + "".join(f'<a class="btn quiet" href="/?d={d.isoformat()}">{d:%d %b %Y}'
+                               f' <span class="muted">· {n}</span></a>' for d, n in days) + "</div>")
     dl = home_relative(cfg.downloads_dir) if cfg.downloads_dir else ""
     return f"""<h1>Sources<small>Where your work log comes from</small></h1>
 <section class="block" style="margin-top:24px"><h2>Claude Code</h2>
@@ -436,9 +486,10 @@ def page_sources(app: App, cfg: Config) -> str:
 
 <section class="block"><h2>claude.ai chats</h2>
 <p class="help">claude.ai has no live connection, so chats come from its data export. worklog keeps only chat titles,
-short redacted snippets of your own messages, tool names and edited file names. Claude's replies, chat summaries and
+short redacted snippets of your own messages, tool names and edited file names{summ_note}. Claude's replies and
 attachments are never saved. Exports have no token counts.</p>
 <p>{imported}</p>
+{day_links}
 <details{" open" if not last else ""}><summary>How to get the export</summary><ol>
 <li>Open <a href="{EXPORT_SETTINGS_URL}" target="_blank" rel="noopener noreferrer">claude.ai settings</a> → <b>Privacy</b> → <b>Export data</b>.</li>
 <li>Wait for the e-mail and open its link. It downloads a small list of files.</li>
@@ -454,6 +505,8 @@ attachments are never saved. Exports have no token counts.</p>
 <label for="chat_account">File imported chats under</label><select id="chat_account" name="account">{acct_opts}</select>
 <div class="check"><input type="checkbox" id="watch" name="watch" value="1"{" checked" if cfg.watch_downloads else ""}>
 <label for="watch">Import from Downloads: on each sync, import new <code>conversations-*.zip</code> files found in the folder below</label></div>
+<div class="check"><input type="checkbox" id="keep_summaries" name="keep_summaries" value="1"{" checked" if cfg.keep_chat_summaries else ""}>
+<label for="keep_summaries">Also keep claude.ai's own summary of each chat (written by Claude, shortened to 600 characters and redacted). It shows what each chat was about. Re-import your export after turning this on.</label></div>
 <label for="downloads">Downloads folder (leave empty for <code>{e(home_relative(default_downloads_dir()))}</code>)</label>
 <input type="text" id="downloads" name="downloads" value="{e(dl)}">
 <p class="muted" style="font-size:.85rem">{watch or "Off. Nothing in your Downloads folder is read."} Files are never moved or deleted.</p>
@@ -627,7 +680,12 @@ class App:
                 return None, "The Downloads folder must be inside your home folder.", form
             cfg.chat_account = None if account == cfg.accounts[0].name else account
             cfg.watch_downloads, cfg.downloads_dir = form.get("watch") == "1", folder
-            return self._save(cfg, "chat_saved", "/sources")
+            was_kept, cfg.keep_chat_summaries = cfg.keep_chat_summaries, form.get("keep_summaries") == "1"
+            loc, err, kept = self._save(cfg, "chat_saved", "/sources")
+            if err is None and was_kept and not cfg.keep_chat_summaries:
+                self.jobs.start("Removing chat summaries",
+                                lambda: f"Removed claude.ai summaries from {chats.strip_summaries(cfg)} chat record(s).")
+            return loc, err, kept
         if path == "/action/report":
             day = _parse_date(form.get("d")) or date.today()
 
