@@ -1,6 +1,18 @@
 # Guide
 
 Everything in detail. For the short version, see the [README](../README.md).
+New to the terminal? Start with the [step-by-step guide](GETTING-STARTED.md). Something broken? See [Troubleshooting](TROUBLESHOOTING.md).
+
+**Words used on this page**
+
+| Word | Meaning |
+|---|---|
+| **Token** | The unit Claude counts text in. More tokens means more of your plan's usage. |
+| **Hook** | A setting in Claude Code that tells Worklog when a session starts and ends. |
+| **Data repo** | The git folder where your log is saved. Put it on GitHub/GitLab (private!) to share it between computers. |
+| **Deploy key** | A key that lets one computer write to one repo, without your password. |
+| **Service** | A program that runs in the background and starts by itself when you log in (systemd). |
+| **Device** | One of your computers. Each one gets its own name. |
 
 - [Full setup (several machines)](#full-setup)
 - [Multiple accounts](#multiple-accounts)
@@ -8,6 +20,7 @@ Everything in detail. For the short version, see the [README](../README.md).
 - [Privacy in detail](#privacy)
 - [Limitations](#limitations)
 - [Uninstall](#uninstall)
+- [Troubleshooting](TROUBLESHOOTING.md)
 
 ## Full setup
 

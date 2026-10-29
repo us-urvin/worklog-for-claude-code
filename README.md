@@ -1,77 +1,123 @@
 # Worklog for Claude Code
 
-**See what you did with Claude Code each day, and how many tokens it used. Automatically.**
+**A diary of your Claude Code work, written for you. See what you did each day and how many tokens it used.**
 
-[![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
+[![Downloads](https://static.pepy.tech/badge/worklog-for-claude-code)](https://pepy.tech/project/worklog-for-claude-code)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
+[![GitHub stars](https://img.shields.io/github/stars/us-urvin/worklog-for-claude-code?style=flat)](https://github.com/us-urvin/worklog-for-claude-code/stargazers)
+[![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE)
 
-> Independent community project, not affiliated with or endorsed by Anthropic.
+> Free and open source. An independent community project, not affiliated with or endorsed by Anthropic.
 
 ![Daily view: a 14-day token chart, what you worked on per project, and tokens by account](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day.png)
 
 ## What is this?
 
-You use Claude Code all day. At the end of it, this tool gives you a simple page that shows:
+At the end of a day with Claude Code it's easy to forget what you actually did. Worklog keeps track for you and shows it on a simple page in your browser:
 
-- ✅ **What you worked on**: a short summary for each project
+- ✅ **What you worked on**: a short summary for each project, every day
 - 📊 **How many tokens you used**: per day, per account and per model
-- 💻 **All in one place**: even if you use several computers or several Claude accounts
-- 💬 **Your claude.ai chats too** (optional): import claude.ai's data export to see chats next to your coding work
+- 💻 **Everything in one place**: even if you use several computers or several Claude accounts
+- 💬 **Your claude.ai chats too** (optional): see your chats next to your coding work
 
-It works in the background. You don't have to do anything after setup.
+You set it up once. After that it runs quietly in the background.
 
 ![How it works: Claude Code → claude-worklog → your private repo → daily work log](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/how-it-works.svg)
 
-## Try it first (no setup)
+## Who is it for?
+
+- **Freelancers and consultants** who need to know what they did for which client
+- **Anyone writing a daily standup** or a weekly status update
+- **People with several computers or Claude accounts** who want one combined view
+- **Anyone curious about their token usage** day by day
+
+## Try it in 1 minute (nothing is installed or changed)
+
+Copy this into a terminal:
 
 ```bash
 pipx run --spec worklog-for-claude-code claude-worklog demo
 ```
 
-Then open **http://localhost:8766**. It shows fake example data and doesn't touch your files. Press Ctrl+C to stop.
+Then open **http://localhost:8766** in your browser. You'll see the app filled with made-up example data. Press **Ctrl+C** in the terminal to stop it.
 
-## Install
+> Don't have `pipx`? The [step-by-step guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GETTING-STARTED.md) shows how to install it.
 
-You need Linux, Python 3.10+ and [Claude Code](https://code.claude.com/docs).
+## Install in 3 steps
+
+You need **Linux** (for example Ubuntu), **Python 3.10 or newer** and **[Claude Code](https://code.claude.com/docs)**.
+
+**Step 1. Install the app**
 
 ```bash
-# 1. Install
 pipx install worklog-for-claude-code
+```
 
-# 2. Create a folder for your data and start the tool
+**Step 2. Make a folder for your log and start the app**
+
+```bash
 git init ~/claude-worklog-data
 claude-worklog install-service
 ```
 
-**3.** Open **http://worklog.localhost:8765**, fill in the short setup form, then click **Install hook**.
+The first line creates a folder where your daily log is saved. The second starts Worklog and makes it start again by itself every time you log in.
 
-Done. Your work log fills up as you use Claude Code.
+**Step 3. Finish setup in your browser**
 
-> Using more than one computer? Put the data folder in a **private** GitHub/GitLab repo so all your machines share it. See [Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup).
+Open **http://worklog.localhost:8765**, fill in the short form (the suggested values are fine), then click **Install hook**. That last button lets Worklog notice when a Claude Code session starts and ends.
+
+That's it. Use Claude Code as usual, and your log fills up on its own.
+
+🆕 New to the terminal? Follow the **[step-by-step guide for beginners](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GETTING-STARTED.md)**.
+Using more than one computer? See **[Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup)**.
 
 ## Is my data private?
 
-Mostly yes, with a few things you should know.
+Yes, with a few things you should know.
 
-- 🔒 **Everything stays on your computer**, plus your own private git repo if you set one up. No cloud service, no tracking.
-- ✂️ **Only short notes are saved**: the first 300 characters of each prompt, token counts, file names and commit messages. Your files and Claude's replies are never saved, but a code snippet you paste into a prompt can end up in those 300 characters.
+- 🔒 **It stays on your computer**, plus your own private git repo if you set one up. There is no cloud service and no tracking.
+- ✂️ **Only short notes are saved**: the first 300 characters of each prompt, token counts, file names and commit messages. Your files and Claude's replies are never saved. A code snippet you paste into a prompt can end up in those 300 characters.
 - 🧹 **Common secrets are hidden (best effort)**: well-known API key formats, `password=…` / `token=…` pairs, e-mail addresses and IP addresses are replaced with `[REDACTED]` before saving. This can miss things, such as a password written in a normal sentence, so keep your data repo **private**.
-- 🤖 **Optional AI summaries** use your own Claude account (`claude -p`). Turn them off in Settings to keep everything fully local.
-- 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies and attachments are never saved. If you want, you can also keep claude.ai's own short summary of each chat (off by default).
+- 🤖 **The daily summaries are written by your own Claude account** (`claude -p`). Turn them off in Settings to keep everything fully local.
+- 💬 **Imported claude.ai chats** keep only chat titles and short redacted snippets of your own messages. Claude's replies and attachments are never saved.
 
 [More about privacy →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 
+## Questions
+
+**Does it cost anything?**
+No. Worklog is free and open source. The optional daily summaries use your own Claude account, a small amount each day. You can turn them off.
+
+**Will it slow down Claude Code?**
+No. It only reads Claude Code's log files after a session ends, and once an hour as a backup.
+
+**Does it work on Mac or Windows?**
+Not yet, only Linux. It is tested on Ubuntu. Help with Mac and Windows is welcome.
+
+**Do I need a GitHub account?**
+Only if you want to combine several computers. On one computer, a local folder is enough.
+
+**Where are my claude.ai chats?**
+claude.ai doesn't share chats with apps directly, so you import its data export on the **Sources** page. [How to import →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#claudeai-chats)
+
+**The page is empty or doesn't open. What now?**
+See [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md), or run `claude-worklog doctor` to check your setup.
+
+**How do I remove it?**
+See [Uninstall](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#uninstall). Your saved log is never deleted for you.
+
 ## Good to know
 
-- **Claude Code is tracked automatically.** claude.ai chats have no live connection: you import its data export on the **Sources** page (upload it, or let worklog pick it up from your Downloads folder). Exports have no token counts. See [claude.ai chats](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#claudeai-chats).
-- **Linux only** for now (it uses systemd).
+- Claude Code is tracked automatically. claude.ai chats come from an export you import, and the export has no token counts.
 - It reads Claude Code's local log files. Their format isn't official, so a Claude Code update could break it for a while.
 
-## More
+## Like it? ⭐
 
-- 📖 [Full guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md): several computers, several accounts, all commands, uninstalling
-- 🐛 [Report a bug](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose) · 🔐 [Security](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md) · 🤝 [Contributing](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CONTRIBUTING.md) · 📝 [Changelog](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md)
+If Worklog saves you time, please **[give it a star on GitHub](https://github.com/us-urvin/worklog-for-claude-code)**. It's free, takes one click, and helps other people find it.
+
+- 📘 [Beginner guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GETTING-STARTED.md) · 📖 [Full guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md) · 🛠️ [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md)
+- 🐛 [Report a bug or ask for a feature](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose) · 🤝 [Contributing](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CONTRIBUTING.md) · 🔐 [Security](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md) · 📝 [Changelog](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md)
 
 ## License
 

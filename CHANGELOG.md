@@ -6,6 +6,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-29
+
+### Added
+- A step-by-step guide for people new to the terminal (`docs/GETTING-STARTED.md`) and a troubleshooting
+  page (`docs/TROUBLESHOOTING.md`).
+- Every page of the web UI has a small footer with the version and links to the project, help and bug reports.
+  They are plain links: nothing is loaded from outside.
+
+### Changed
+- The README is rewritten in plain language, with who it's for, a 3-step install and common questions.
+- The guide starts with a short list of the words it uses.
+
 ## [0.2.1] - 2026-10-05
 
 ### Added
@@ -63,7 +75,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/us-urvin/worklog-for-claude-code/releases/tag/v0.1.0

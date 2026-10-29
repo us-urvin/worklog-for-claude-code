@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import chats, services
+from . import __version__, chats, services
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -203,6 +203,8 @@ code,.cmd{font-family:"Ubuntu Mono","DejaVu Sans Mono",monospace;font-size:.9em}
 .empty{padding:28px;border:1px dashed var(--rule);border-radius:10px;text-align:center;color:var(--muted)}
 ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin:2px 0 0;color:var(--muted);font-size:.92rem}
 .chatsum{color:var(--muted);font-size:.92rem;max-width:70ch;margin-top:2px}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
+footer a{color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.bar{transition:opacity .15s}a:hover .bar{opacity:.8}}
 """
 
@@ -223,6 +225,14 @@ return r.json().then(function(j){if(r.ok){location.href='/sources?ok=job'}else{o
 """
 
 
+# Plain links only: nothing is fetched from outside, and the page sends no referrer to another site.
+_REPO = "https://github.com/us-urvin/worklog-for-claude-code"
+FOOTER = (f'<footer>Worklog for Claude Code {e(__version__)} · '
+          f'<a href="{_REPO}" target="_blank" rel="noopener noreferrer">⭐ Star on GitHub</a> · '
+          f'<a href="{_REPO}/blob/main/docs/TROUBLESHOOTING.md" target="_blank" rel="noopener noreferrer">Help</a> · '
+          f'<a href="{_REPO}/issues/new/choose" target="_blank" rel="noopener noreferrer">Report a bug</a></footer>')
+
+
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None) -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
@@ -240,7 +250,7 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} – Worklog</title>
 <style>{CSS}</style></head><body><div class="wrap">
-<header><a class="brand" href="/">Worklog</a><nav>{nav}</nav></header>{banners}{body}</div>
+<header><a class="brand" href="/">Worklog</a><nav>{nav}</nav></header>{banners}{body}{FOOTER}</div>
 <script nonce="{nonce}">{SCRIPT}</script></body></html>"""
 
 
@@ -529,7 +539,7 @@ def page_setup(app: App, form: dict | None = None) -> str:
 <section class="block"><h2>This device</h2><p class="help">A short name so the report can tell your machines apart. Use a different name on each device.</p>
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{v('device', default_device)}" required pattern="[A-Za-z0-9_-]{{1,40}}"></section>
 <section class="block"><h2>Data repo</h2><p class="help">A private git repo (GitHub, GitLab or Bitbucket) that every device syncs to. Create it empty on the website first.
-If this device already has a clone, just enter its folder. Otherwise also paste the clone URL and it will be cloned for you. The URL must work without a password prompt (SSH deploy key, see README).</p>
+If this device already has a clone, just enter its folder. Otherwise also paste the clone URL and it will be cloned for you. The URL must work without a password prompt (SSH deploy key, see Full setup in docs/GUIDE.md).</p>
 <label for="store">Folder</label><input type="text" id="store" name="store" value="{v('store', '~/claude-worklog-data')}" required>
 <label for="clone">Clone URL (only if the folder doesn't exist yet)</label><input type="text" id="clone" name="clone" value="{v('clone')}" placeholder="git@github.com:you/claude-worklog-data.git"></section>
 <section class="block"><h2>First Claude account</h2><p class="help">The account you use with plain <code>claude</code> lives in <code>~/.claude</code>. You can add more accounts after setup.</p>
