@@ -153,3 +153,15 @@ def test_html_patterns_are_valid_in_modern_browsers():
     pages = web.page_setup(web.App(1)) + web.CSS
     for pattern in re.findall(r'pattern="([^"]*)"', pages):
         assert "_-]" not in pattern, pattern
+
+
+def test_stylesheet_rules_are_well_formed():
+    """Every declaration block has its selector: a lost "selector{" once left the notices unstyled."""
+    import re
+
+    from worklog import web
+    css = re.sub(r"/\*.*?\*/", "", web.CSS, flags=re.S)
+    assert css.count("{") == css.count("}")
+    for chunk in css.split("}"):
+        assert not chunk.strip() or "{" in chunk, f"declarations without a selector: {chunk.strip()[:80]}"
+    assert ".notice{" in css and ".checklist{" in css

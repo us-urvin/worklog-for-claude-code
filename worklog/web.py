@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, services, watcher
+from . import __version__, chats, checks, services, viz, watcher
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -50,6 +50,7 @@ log = logging.getLogger(__name__)
 DEFAULT_PORT = 8765
 # HTML pattern for names. "-" is escaped: browsers compile patterns with the v flag, where a bare "-" fails.
 NAME_PATTERN = r"[A-Za-z0-9_\-]{1,40}"
+HISTORY_DAYS = 35  # five weeks: the calendar on the day page (the bar chart shows the last 14)
 REFILE_DAYS = 30  # Claude Code's default transcript retention
 HOST_NAME = "worklog.localhost"  # *.localhost resolves to loopback in browsers and systemd-resolved
 MAX_BODY = 64 * 1024
@@ -278,11 +279,63 @@ ol.checks details{margin:0;flex:1;font-size:.95rem}ol.checks summary{color:var(-
 .fix{padding:6px 0 4px}.fix p{margin:6px 0;max-width:72ch}.fix .why{color:var(--muted)}
 .cmdrow{display:flex;gap:8px;align-items:center;min-width:0}.cmdrow .cmd{flex:1;margin:4px 0;min-width:0}
 ol.checks>li>details,ol.checks>li>span{min-width:0}.tips{margin-top:12px}
-gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px;border-radius:16px;
+.notice{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px;border-radius:16px;
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
 .notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
+/* ---- motion: everything here is switched off by prefers-reduced-motion below */
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+@keyframes grow{from{transform:scaleY(0)}}
+@keyframes growx{from{transform:scaleX(0)}}
+@keyframes draw{from{stroke-dasharray:0 100}}
+@keyframes pop{from{opacity:0;transform:scale(.3)}}
+@keyframes flicker{0%,100%{transform:scale(1) rotate(-3deg)}50%{transform:scale(1.15) rotate(4deg)}}
+@keyframes bob{50%{transform:translateY(-4px)}}
+@keyframes zz{0%{opacity:0;transform:translate(0,6px)}30%{opacity:1}100%{opacity:0;transform:translate(6px,-10px)}}
+@keyframes blink{50%{opacity:.25}}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,-16px)}}
+@keyframes hue{to{filter:blur(60px) hue-rotate(360deg)}}
+@keyframes bounce{to{transform:scaleY(1.18)}}
+@keyframes wiggle{from{transform:rotate(-2deg)}to{transform:rotate(2deg)}}
+.tile{animation:rise .6s cubic-bezier(.2,.8,.2,1) both}.tile:nth-child(2){animation-delay:.08s}.tile:nth-child(3){animation-delay:.16s}.tile:nth-child(4){animation-delay:.24s}
+.entry,.insights .panel,aside .panel,.strip{animation:rise .55s cubic-bezier(.2,.8,.2,1) both}.strip{animation-delay:.1s}
+.insights .panel:nth-child(2){animation-delay:.08s}.insights .panel:nth-child(3){animation-delay:.16s}
+.entry:nth-of-type(2){animation-delay:.06s}.entry:nth-of-type(3){animation-delay:.12s}.entry:nth-of-type(4){animation-delay:.18s}
+.entry:hover,.insights .panel:hover,.tile:hover{transform:translateY(-2px);transition:transform .2s}
+svg .bar{transform-box:fill-box;transform-origin:50% 100%;animation:grow .75s cubic-bezier(.2,.9,.3,1.15) both}
+.insights{display:grid;grid-template-columns:1.05fr 1fr 1.2fr;gap:16px;margin-top:22px}@media (max-width:900px){.insights{grid-template-columns:1fr}}
+.insights .panel{padding:18px;background:var(--glass);border:1px solid var(--rule);border-radius:18px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--shadow)}
+.clock{width:100%;max-width:230px;display:block;margin:0 auto}.clock .face{fill:var(--glass-hi);stroke:var(--rule)}.clock .hub{fill:var(--bg)}
+.clock .wedge{fill:var(--accent-2);fill-opacity:.85;transform-box:view-box;transform-origin:60px 60px;animation:pop .6s cubic-bezier(.2,.9,.3,1.2) both}
+.clock .wedge:hover{fill:var(--accent-3)}.clock text,.heat text{font:600 7px/1 system-ui,sans-serif;fill:var(--muted)}
+.heat{width:100%;max-width:190px;display:block;margin:0 auto}.heat .cell{transform-box:fill-box;transform-origin:center;animation:pop .45s ease-out both}
+.heat .l0{fill:color-mix(in srgb,var(--muted) 16%,transparent)}.heat .l1{fill:color-mix(in srgb,var(--accent) 35%,transparent)}.heat .l2{fill:color-mix(in srgb,var(--accent) 60%,transparent)}
+.heat .l3{fill:var(--accent)}.heat .l4{fill:var(--accent-2)}.heat .sel{stroke:var(--ink);stroke-width:1.5}.heat .future{opacity:.25}
+.streaktxt{margin:8px 0 0;font-size:.9rem}
+.projbars{list-style:none;margin:0;padding:0}.projbars li{margin:0 0 10px}.projbars .pl{display:flex;gap:8px;font-size:.88rem}
+.projbars .pl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projbars .pl b{margin-left:auto}
+.pbar{height:8px;border-radius:99px;background:var(--glass-hi);overflow:hidden;margin-top:4px}
+.pbar span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2),var(--accent-3));transform-origin:left;animation:growx .8s cubic-bezier(.2,.8,.2,1) both}
+.donut{display:flex;gap:14px;align-items:center;margin:0 0 6px}.donut svg{width:110px;height:110px;flex:none}
+.donut .track{fill:none;stroke:var(--glass-hi);stroke-width:12}.donut .seg{fill:none;stroke-width:12;animation:draw 1s cubic-bezier(.3,.7,.2,1) both}
+.donut .big{font:800 15px/1 system-ui,sans-serif;fill:var(--ink)}.donut .small{font:600 7.5px/1 system-ui,sans-serif;fill:var(--muted)}
+.donut .legend{display:flex;flex-direction:column;gap:4px;font-size:.82rem;margin:0}
+.flame{display:inline-flex;align-items:center;gap:4px;margin-left:10px;padding:2px 10px;border-radius:99px;font-size:.9rem;font-weight:700;
+color:var(--ink);background:color-mix(in srgb,#FB923C 18%,transparent);border:1px solid color-mix(in srgb,#FB923C 45%,transparent);vertical-align:2px}
+.flame i{font-style:normal;display:inline-block;animation:flicker 1.1s ease-in-out infinite}
+.fact{margin:-6px 0 18px;color:var(--muted);font-size:.95rem}
+.robot{width:120px;height:120px;display:block;margin:0 auto 6px}.robot .rb{fill:var(--glass-hi);stroke:var(--accent);stroke-width:2}
+.robot .eye{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round}.robot .mouth{fill:var(--muted)}
+.robot .led{fill:var(--accent-3);animation:blink 2.4s ease-in-out infinite}.robot .bob{animation:bob 3s ease-in-out infinite}
+.robot .z{font:800 11px/1 system-ui,sans-serif;fill:var(--accent-2);opacity:0;animation:zz 3s ease-out infinite}
+.robot .z2{animation-delay:1s}.robot .z3{animation-delay:2s;font-size:14px}
+.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:60;padding:12px 22px;border-radius:16px;font-weight:800;
+background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--glow),var(--shadow);animation:toastin .35s ease-out both}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:59}
+body.party::before{animation:hue 1.2s linear infinite}body.party svg .bar{animation:bounce .35s ease-in-out infinite alternate}
+body.party .tile{animation:wiggle .25s ease-in-out infinite alternate}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 footer{margin-top:44px;padding:16px 4px 0;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
 footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
 @media (max-width:560px){.opt{display:none}header{padding:8px}nav a{padding:6px 10px}.brand span{display:none}section.block{padding:18px}.entry{padding:18px}}
@@ -290,6 +343,31 @@ footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
 """
 
 SCRIPT = """
+(function(){var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+var fun=document.body.dataset.fun==='1';
+function short(v){var u=[[1e9,'B'],[1e6,'M'],[1e3,'k']];for(var i=0;i<u.length;i++){if(v>=u[i][0]){return (v/u[i][0]).toFixed(1).replace(/\\.0$/,'')+u[i][1]}}return String(Math.round(v))}
+function fmt(v,f){v=Math.round(v);if(f==='short')return short(v);if(f==='dur'){var h=Math.floor(v/60),m=v%60;return h?h+'h '+(m<10?'0':'')+m+'m':m+'m'}return String(v)}
+if(!reduce){document.querySelectorAll('[data-count]').forEach(function(el){var to=+el.dataset.count,f=el.dataset.fmt,final=el.textContent,t0=null;
+if(!(to>0))return;function step(t){if(t0===null)t0=t;var p=Math.min(1,(t-t0)/800),k=1-Math.pow(1-p,3);el.textContent=p<1?fmt(to*k,f):final;if(p<1)requestAnimationFrame(step)}
+el.textContent=fmt(0,f);requestAnimationFrame(step)})}
+function toast(text){var t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=text;document.body.appendChild(t);setTimeout(function(){t.remove()},3200)}
+function confetti(){if(reduce)return;var c=document.createElement('canvas');c.id='confetti';document.body.appendChild(c);var x=c.getContext('2d');
+var W=c.width=innerWidth,H=c.height=innerHeight,cols=['#9D8CFF','#38D9F5','#F57BC3','#FBBF24','#4ADE9B'],ps=[];
+for(var i=0;i<160;i++){ps.push({x:W/2+(Math.random()-.5)*W*.3,y:H*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*14-4,s:4+Math.random()*6,r:Math.random()*6,vr:(Math.random()-.5)*.3,c:cols[i%cols.length]})}
+var t0=performance.now();(function frame(t){x.clearRect(0,0,W,H);ps.forEach(function(p){p.vy+=.35;p.vx*=.99;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
+x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.fillRect(-p.s/2,-p.s/4,p.s,p.s/2);x.restore()});
+if(t-t0<2200){requestAnimationFrame(frame)}else{c.remove()}})(t0)}
+function seen(k){try{var s=JSON.parse(localStorage.getItem('worklog.cheers')||'[]');if(s.indexOf(k)>=0)return true;s.push(k);localStorage.setItem('worklog.cheers',JSON.stringify(s.slice(-200)));return false}catch(e){return false}}
+if(fun){var lines=[];var f=document.getElementById('fun');if(f&&f.dataset.celebrate)lines=lines.concat(f.dataset.celebrate.split('\\n'));
+document.querySelectorAll('.banner[data-celebrate]').forEach(function(b){lines.push(b.dataset.celebrate)});
+var first=true;lines.forEach(function(l){if(!l)return;var i=l.indexOf('|'),k=l.slice(0,i),msg=l.slice(i+1);if(seen(k))return;
+setTimeout(function(){confetti();toast(msg)},first?500:2600);first=false})}
+if(fun){var code=['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'],buf=[],typed='',timer=null;
+function party(on){document.body.classList.toggle('party',on);clearTimeout(timer);if(on){toast('🪩 Party mode! (Esc to stop)');confetti();timer=setTimeout(function(){party(false)},10000)}}
+document.addEventListener('keydown',function(ev){var tag=(ev.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select')return;
+if(ev.key==='Escape'){party(false);return}buf.push(ev.key);buf=buf.slice(-code.length);typed=(typed+ev.key).slice(-5).toLowerCase();
+if(buf.join()===code.join()||typed==='party'){buf=[];typed='';party(true)}})}
+})();
 document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('button.copy');if(!b)return;
 var say=function(m){b.textContent=m;setTimeout(function(){b.textContent='Copy'},1600)};
 var manual=function(){var pre=b.parentNode.querySelector('pre');if(pre){var r=document.createRange();r.selectNodeContents(pre);
@@ -329,7 +407,7 @@ LOGO = ('<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="l
 
 
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None,
-           extra: str = "") -> str:
+           extra: str = "", fun: bool = False) -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
                                   ("settings", "/settings", "Settings")))
@@ -338,7 +416,10 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
     elif job.get("message") and job.get("finished"):
         cls = "ok" if job.get("ok") else "bad"
-        banners += f'<div class="banner {cls}" role="status">{e(job["message"])} <span class="muted">({e(job["finished"])})</span></div>'
+        cheer = (f' data-celebrate="summaries:{e(job["finished"])}|Summaries are ready ✍️"'
+                 if job.get("ok") and str(job["message"]).startswith("Summaries written") else "")
+        banners += (f'<div class="banner {cls}" role="status"{cheer}>{e(job["message"])} '
+                    f'<span class="muted">({e(job["finished"])})</span></div>')
     if ok in OK_MESSAGES:
         banners += f'<div class="banner ok" role="status">{e(OK_MESSAGES[ok])}</div>'
     if error:
@@ -346,7 +427,7 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
     banners += extra
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} – Worklog</title>
-<style>{CSS}</style></head><body><div class="wrap">
+<style>{CSS}</style></head><body data-fun="{1 if fun else 0}"><div class="wrap">
 <header><a class="brand" href="/">{LOGO}<span>Worklog</span></a><nav aria-label="Main">{nav}</nav></header>{banners}{body}{FOOTER}</div>
 <script nonce="{nonce}">{SCRIPT}</script></body></html>"""
 
@@ -372,7 +453,7 @@ def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], sele
             bh = (h - top - bottom) * v / peak
             y -= bh
             rects.append(f'<rect class="bar" x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="3" '
-                         f'fill="{COLORS[accounts.index(name) % len(COLORS)]}"/>')
+                         f'fill="{COLORS[accounts.index(name) % len(COLORS)]}" style="animation-delay:{i * 40}ms"/>')
         if not rects:
             rects.append(f'<rect x="{x:.1f}" y="{h - bottom - 2}" width="{bw:.1f}" height="2" fill="var(--rule)"/>')
         is_sel = d == selected
@@ -429,9 +510,10 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
     accounts, projects = aggregate(records)
     saved = load_saved_summaries(store, day).get("summaries", {})
 
-    history_days = [day - timedelta(days=i) for i in reversed(range(14))]
+    history_days = [day - timedelta(days=i) for i in reversed(range(HISTORY_DAYS))]
     history, names = [], [a.name for a in cfg.accounts]
     chat_counts: dict[date, int] = {}
+    activity: dict[date, int] = {}  # tokens per day (1 for a day with only chats): drives the calendar
     for d in history_days:
         per: dict[str, int] = {}
         for r in store.iter_json(f"records/{d.isoformat()}"):
@@ -442,6 +524,12 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
             if name not in names:
                 names.append(name)  # account configured on another device only
         history.append((d, per))
+        tokens_d = sum(per.values())
+        if tokens_d or chat_counts.get(d):
+            activity[d] = tokens_d or 1
+    chart_history = history[-14:]
+    streak = viz.streak(set(activity), day)
+    fun = cfg.fun
 
     prev_d, next_d = day - timedelta(days=1), day + timedelta(days=1)
     today = date.today()
@@ -451,8 +539,16 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
     jump = (f'<form method="get" action="/" class="row" style="margin:0"><label for="d" class="muted" style="margin:0">Go to</label>'
             f'<input type="date" id="d" name="d" value="{day.isoformat()}" max="{today.isoformat()}" style="width:auto">'
             f'<button class="quiet">Show</button></form>')
+    flame = (f'<span class="flame" title="{streak} days in a row with work"><i aria-hidden="true">🔥</i>'
+             f'{streak}-day streak</span>') if fun and streak >= 2 else ""
     head = (f'<div class="daynav"><h1><span class="grad">{day:%A, %d %B}</span><small>{day.year}'
-            f'{", today" if day == today else ""}</small></h1><div class="arrows">{arrows}</div></div>')
+            f'{", today" if day == today else ""}{flame}</small></h1><div class="arrows">{arrows}</div></div>')
+    celebrate = []
+    if fun and viz.is_record_day(activity, day):
+        celebrate.append(f"record:{day.isoformat()}|Your biggest day in {HISTORY_DAYS // 7} weeks! 🎉")
+    if fun and day == today and streak in (3, 7, 14, 30, 60, 100) and day in activity:
+        celebrate.append(f"streak{streak}:{day.isoformat()}|{streak}-day streak! 🔥")
+    party = f'<div id="fun" hidden data-celebrate="{e(chr(10).join(celebrate))}"></div>' if fun else ""
 
     busy = " disabled" if app.jobs.snapshot().get("running") else ""
     actions = (f'<div class="row"><form method="post" action="/action/collect"><input type="hidden" name="csrf" value="{app.csrf}">'
@@ -467,10 +563,11 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
             d0, n0 = latest[0]
             head += (f'<p class="muted" style="margin:10px 0 0">Your latest claude.ai chats are on '
                      f'<a href="/?d={d0.isoformat()}">{d0:%a %d %b %Y}</a> ({n0}).</p>')
-        body = (head + '<p class="lede">Nothing recorded for this day yet.</p>' + _chart(history, names, day, chat_counts)
-                + '<div class="empty">Sessions appear here after a Claude Code session ends, or when you press '
+        robot = viz.ROBOT if fun else ""
+        body = (head + '<p class="lede">Nothing recorded for this day yet.</p>' + _chart(chart_history, names, day, chat_counts)
+                + f'<div class="empty">{robot}<p>Sessions appear here after a Claude Code session ends, or when you press '
                   '<b>Sync now</b>. Other devices show up once they have synced. claude.ai chats appear after you '
-                  '<a href="/sources">import an export</a>.</div>' + actions)
+                  '<a href="/sources">import an export</a>.</p></div>' + actions + party)
         return body, None
 
     total = sum(sum(a["tokens"].values()) for a in accounts.values())
@@ -486,10 +583,27 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
     else:
         lede = f'<p class="lede">{chat_txt}. claude.ai exports have no token counts.</p>'
     minutes = sum(p.minutes for p in projects.values())
-    tiles = [("Tokens", _short(total) if sessions else "–"), ("Sessions", str(sessions)),
-             ("Projects", str(sum(1 for p in projects.values() if p.sessions or p.chats))), ("Time", _dur(minutes))]
-    lede += ('<div class="tiles">' + "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{e(v)}</div></div>'
-                                             for k, v in tiles) + "</div>")
+    n_projects = sum(1 for p in projects.values() if p.sessions or p.chats)
+    tiles = [("Tokens", _short(total) if sessions else "–", total if sessions else None, "short"),
+             ("Sessions", str(sessions), sessions, "int"), ("Projects", str(n_projects), n_projects, "int"),
+             ("Time", _dur(minutes), minutes, "dur")]
+    lede += ('<div class="tiles">' + "".join(
+        f'<div class="tile"><div class="k">{k}</div><div class="v"'
+        + (f' data-count="{n}" data-fmt="{fmt}"' if n is not None else "") + f'>{e(v)}</div></div>'
+        for k, v, n, fmt in tiles) + "</div>")
+    if fun:
+        out_tokens = sum(a["tokens"]["output"] for a in accounts.values())
+        n_commits = sum(len(p.commits) for p in projects.values())
+        fact = viz.fun_fact(day, total, out_tokens, sum(len(p.files) for p in projects.values()), n_commits, minutes)
+        lede += f'<p class="fact"><span aria-hidden="true">✨</span> {e(fact)}</p>' if fact else ""
+    insights = (
+        '<div class="insights">'
+        f'<div class="panel"><h2>When you worked</h2>{viz.clock(viz.minutes_by_hour(records, day))}</div>'
+        f'<div class="panel"><h2>Last {HISTORY_DAYS // 7} weeks</h2>{viz.heatmap(activity, day, HISTORY_DAYS // 7)}'
+        f'<p class="muted streaktxt">{"🔥 " if fun and streak >= 2 else ""}{streak} day{"s" * (streak != 1)} in a row</p></div>'
+        f'<div class="panel"><h2>Projects today</h2>'
+        f'{viz.project_bars([(p.name, p.minutes) for p in projects.values()]) or "<p class=muted>No time recorded.</p>"}</div>'
+        '</div>')
 
     entries = []
     for p in sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -sum(p.tokens.values()))):
@@ -540,13 +654,13 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         + "</li>" for r in model_rows(accounts))
     aside = (f'<aside><div class="panel"><h2>Tokens by account</h2><div class="tablewrap"><table>'
              f'<tr><th>Account</th><th>In</th><th>Out</th><th class="opt">Cache<br>write</th><th class="opt">Cache<br>read</th><th>Total</th></tr>'
-             f'{acct_rows}</table></div></div><div class="panel"><h2>By model</h2><ul class="models">{models_html}</ul>'
+             f'{acct_rows}</table></div></div><div class="panel"><h2>By model</h2>{viz.donut(model_rows(accounts))}<ul class="models">{models_html}</ul>'
              f'<p class="muted" style="font-size:.8rem;margin:10px 0 0">The model Claude Code logged for each reply, '
              f'including sub-agents. Usage, not a bill.</p></div></aside>')
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
-    body = (head + lede + _chart(history, names, day, chat_counts) + actions
-            + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>')
+    body = (head + lede + _chart(chart_history, names, day, chat_counts) + actions + insights
+            + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>' + party)
     return body, None
 
 
@@ -1227,7 +1341,8 @@ def make_handler(app: App):
             nonce = secrets.token_urlsafe(16)
             cfg = _try_config() if title != "Set up" else None
             extra = top_panels(app, cfg, active) if cfg else ""
-            self._send(status, layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra), nonce=nonce)
+            page = layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra, fun=bool(cfg and cfg.fun))
+            self._send(status, page, nonce=nonce)
 
         # ---------------------------------------------------------- GET
         def do_GET(self):
