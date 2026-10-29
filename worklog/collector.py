@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .config import SUMMARIZER_CWD, Account, Config
+from .config import SUMMARIZER_CWD, Account, Config, home_relative
 from .identity import Identity, load_state, session_logins
 from .parser import ParseStats, SessionDay, parse_transcript
 from .redact import redact
@@ -22,9 +22,7 @@ _SAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _home_relative(p: Path | str) -> str:
-    p = str(p)
-    home = str(Path.home())
-    return "~" + p[len(home):] if p == home or p.startswith(home + "/") else p
+    return home_relative(p)
 
 
 def find_git_root(start: Path) -> Path | None:
@@ -100,7 +98,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
     files = []
     for f in sorted(sd.files)[:200]:
         fp = Path(f)
-        files.append(str(fp.relative_to(root)) if root and root in fp.parents else _home_relative(fp))
+        files.append(fp.relative_to(root).as_posix() if root and root in fp.parents else _home_relative(fp))
 
     prompts = [redact(p)[: cfg.max_prompt_chars] for p in sd.prompts[: cfg.max_prompts]]
     minutes = round((sd.last - sd.first).total_seconds() / 60) if sd.first and sd.last else 0
@@ -155,7 +153,7 @@ def _move_stale(store: GitStore, day: date, device: str, account: str, fname: st
     for old in sorted(base.glob(f"*/{fname}")) if base.is_dir() else []:
         if old.parent.name == account:
             continue
-        src, dst = str(old.relative_to(store.path)), f"records/{day.isoformat()}/{device}/{account}/{fname}"
+        src, dst = old.relative_to(store.path).as_posix(), f"records/{day.isoformat()}/{device}/{account}/{fname}"
         store.move(src, dst)
         log.info("session %s: record moved from account %s to %s", fname[:8], old.parent.name, account)
         moved += 1

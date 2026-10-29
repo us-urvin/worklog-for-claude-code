@@ -14,6 +14,7 @@ from pathlib import Path
 from . import __version__
 from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config
 from .hooks import HOOK_EVENTS, default_model, install_hook, installed_events
+from .services import _detached
 
 log = logging.getLogger("worklog")
 
@@ -100,6 +101,15 @@ def cmd_doctor(args) -> int:
     if cfg.use_ai:
         model = cfg.summary_model or "the default model of account " + str(cfg.summarizer_account)
         print(f"  summaries are written with: {model}")
+    from . import services
+    py = services.configured_python()
+    auto = services.autostart_ok()
+    if py and not Path(py).exists():
+        ok = False
+        print(f"✗ background service: it starts {py}, which no longer exists (Python was upgraded?). "
+              "Run `claude-worklog install-service` again.")
+    elif auto is not None:
+        print(f"{'✓' if auto else '!'} starts at login: {'yes' if auto else 'no (run claude-worklog install-service)'}")
     return 0 if ok else 1
 
 
@@ -139,8 +149,20 @@ def cmd_install_service(args) -> int:
         print(f"✗ {exc}")
         return 1
     if not args.no_start:
-        print(f"\n✓ Worklog UI is running: http://{HOST_NAME}:{args.port}")
-        print("  It starts automatically whenever you log in. Remove any cron lines you added earlier.")
+        print(f"\n✓ Worklog UI is running: http://{HOST_NAME}:{args.port}  (or http://localhost:{args.port})")
+        print("  It starts automatically whenever you log in.")
+    return 0
+
+
+def cmd_uninstall_service(args) -> int:
+    from . import services
+    try:
+        for msg in services.uninstall():
+            print(msg)
+    except RuntimeError as exc:
+        print(f"✗ {exc}")
+        return 1
+    print("✓ Worklog no longer starts by itself. Your data and settings are untouched.")
     return 0
 
 
@@ -165,7 +187,7 @@ def cmd_hook(args) -> int:
         subprocess.Popen(  # detached so Claude Code exits immediately
             [sys.executable, "-m", "worklog.cli", "--quiet", "collect", "--days", "2"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            **_detached(),
         )
         note_session(sid, "end")  # after the spawn: the collect must not wait on us
     except Exception:  # noqa: BLE001 - a tracking hook must never break Claude Code
@@ -253,12 +275,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8766)
     p.add_argument("--seed", type=int, default=7, help="change for different fake data")
     p.set_defaults(func=cmd_demo)
-    p = sub.add_parser("install-service", help="run the UI + collect/report timers as systemd user services")
+    p = sub.add_parser("install-service",
+                       help="start the UI at login and schedule collect/report (systemd, launchd or Task Scheduler)")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--report", action=argparse.BooleanOptionalAction, default=True,
                    help="build the daily report on this device (use --no-report on all but one device)")
-    p.add_argument("--no-start", action="store_true", help="only write unit files")
+    p.add_argument("--no-start", action="store_true", help="only write the service files")
     p.set_defaults(func=cmd_install_service)
+    sub.add_parser("uninstall-service", help="stop starting Worklog at login (keeps your data)").set_defaults(
+        func=cmd_uninstall_service)
 
     args = ap.parse_args(argv)
     if args.cmd == "demo":  # its own process must not log into the real state folder

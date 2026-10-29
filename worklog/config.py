@@ -320,8 +320,13 @@ def example_config() -> str:
 
 # ------------------------------------------------------------------ writing
 def home_relative(p: Path | str) -> str:
-    s, home = str(p), str(Path.home())
-    return "~" + s[len(home):] if s == home or s.startswith(home + "/") else s
+    """~/x for paths in the home folder, always with "/" so records look the same on every OS."""
+    path, home = Path(p), Path.home()
+    try:
+        rel = path.relative_to(home)
+    except ValueError:
+        return str(p)
+    return "~" if str(rel) == "." else "~/" + rel.as_posix()
 
 
 def under_home(p: Path, allow_home: bool = False) -> bool:

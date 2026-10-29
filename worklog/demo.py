@@ -87,6 +87,9 @@ CHATS = [
 def demo_env(home: Path) -> dict[str, str]:
     """Environment for processes that must only ever see the fake home."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "CLAUDE_", "GIT_"))}
+    # USERPROFILE/APPDATA: on Windows, Python finds the home folder there, not in HOME.
+    env.update(USERPROFILE=str(home), APPDATA=str(home / "AppData" / "Roaming"),
+               LOCALAPPDATA=str(home / "AppData" / "Local"))
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"), XDG_STATE_HOME=str(home / ".local/state"),
                XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
                GIT_CONFIG_NOSYSTEM="1", PYTHONUNBUFFERED="1")

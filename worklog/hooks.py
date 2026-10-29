@@ -7,6 +7,7 @@ One command handles both events; it reads `hook_event_name` from stdin:
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import sys
 from datetime import datetime
@@ -17,9 +18,16 @@ HOOK_MARKER = "claude-worklog hook"
 HOOK_EVENTS = ("SessionStart", "SessionEnd")
 
 
+def _quote(path: str) -> str:
+    """Quote a program path for the shell Claude Code runs hooks in (bash, also on Windows)."""
+    if sys.platform == "win32":
+        return f'"{path}"' if any(c in path for c in ' ()&') else path
+    return shlex.quote(path)
+
+
 def hook_command() -> str:
     exe = shutil.which("claude-worklog")
-    return f"{exe} hook" if exe else f"{sys.executable} -m worklog.cli hook  # {HOOK_MARKER}"
+    return f"{_quote(exe)} hook" if exe else f"{_quote(sys.executable)} -m worklog.cli hook  # {HOOK_MARKER}"
 
 
 def _is_ours(command: object) -> bool:

@@ -12,19 +12,17 @@ file (and in config.toml if you match by them); only the account NAME reaches re
 """
 from __future__ import annotations
 
-import errno
-import fcntl
 import hashlib
 import json
 import logging
 import os
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import STATE_DIR, _expand, home_relative
+from .locks import exclusive
 
 log = logging.getLogger(__name__)
 STATE_VERSION = 1
@@ -140,22 +138,9 @@ def _save_state(state: dict, path: Path) -> None:
 
 @contextmanager
 def _lock(path: Path, timeout: float):
-    """Short exclusive lock for the state file (separate from the store lock, which can be held long)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path.with_suffix(".lock"), "w") as fh:
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError as exc:
-                if exc.errno not in (errno.EAGAIN, errno.EACCES) or time.monotonic() > deadline:
-                    raise TimeoutError("account state is locked") from exc
-                time.sleep(0.05)
-        try:
-            yield
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+    """Short exclusive lock for a state file (separate from the store lock, which can be held long)."""
+    with exclusive(path.with_suffix(".lock"), timeout, what="account state"):
+        yield
 
 
 def _prune(state: dict, now: datetime) -> None:

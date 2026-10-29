@@ -55,7 +55,7 @@ def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:
 
 
 def records(repo: Path) -> dict[str, dict]:
-    return {str(p.relative_to(repo)): json.loads(p.read_text()) for p in sorted(repo.rglob("records/**/*.json"))}
+    return {p.relative_to(repo).as_posix(): json.loads(p.read_text()) for p in sorted(repo.rglob("records/**/*.json"))}
 
 
 def start_session(home: Path, sid: str, capsys=None) -> None:

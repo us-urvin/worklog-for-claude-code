@@ -488,7 +488,7 @@ def strip_summaries(cfg: Config) -> int:
             except (OSError, ValueError):
                 continue
             if isinstance(rec, dict) and rec.pop("summary", None) is not None:
-                changed += store.write_json(str(p.relative_to(store.path)), rec)
+                changed += store.write_json(p.relative_to(store.path).as_posix(), rec)
         if changed:
             store.commit_and_push(f"remove chat summaries {cfg.device}: {changed} record(s)")
     return changed

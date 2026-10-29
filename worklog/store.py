@@ -6,8 +6,6 @@ Layout (every path is device-specific, so devices never conflict):
 """
 from __future__ import annotations
 
-import errno
-import fcntl
 import json
 import logging
 import os
@@ -17,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .config import STATE_DIR, ConfigError
+from .locks import exclusive
 
 log = logging.getLogger(__name__)
 
@@ -39,22 +38,12 @@ class GitStore:
     # ---------------------------------------------------------------- locking
     @contextmanager
     def lock(self, timeout: float = 90.0):
-        """Serialize hook, cron and manual runs on this machine."""
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        with open(STATE_DIR / "store.lock", "w") as fh:
-            deadline = time.monotonic() + timeout
-            while True:
-                try:
-                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except OSError as exc:
-                    if exc.errno not in (errno.EAGAIN, errno.EACCES) or time.monotonic() > deadline:
-                        raise TimeoutError("another claude-worklog run holds the lock") from exc
-                    time.sleep(1)
-            try:
+        """Serialize hook, timer and manual runs on this machine."""
+        try:
+            with exclusive(STATE_DIR / "store.lock", timeout, poll=1.0, what="the data repo"):
                 yield
-            finally:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+        except TimeoutError:
+            raise TimeoutError("another claude-worklog run holds the lock") from None
 
     # ------------------------------------------------------------------- git
     def _git(self, *args: str, timeout: int = 60, check: bool = True) -> subprocess.CompletedProcess:
@@ -82,6 +71,10 @@ class GitStore:
         dirs = [d for d in ("records", "reports") if (self.path / d).exists()]
         if not dirs:
             return
+        attrs = self.path / ".gitattributes"
+        if not attrs.exists():  # Mac, Linux and Windows devices share this repo: keep line endings identical
+            attrs.write_text("records/** text eol=lf\nreports/** text eol=lf\n", encoding="utf-8", newline="\n")
+            dirs.append(".gitattributes")
         self._git("add", "-A", "--", *dirs)
         if self._git("diff", "--cached", "--quiet", check=False).returncode == 0:
             return  # nothing staged
@@ -109,8 +102,12 @@ class GitStore:
             return False
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(target.suffix + ".tmp")
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, target)
+        tmp.write_text(text, encoding="utf-8", newline="\n")  # same bytes on every OS
+        try:
+            os.replace(tmp, target)
+        except PermissionError:  # Windows: an indexer or antivirus may hold the file for a moment
+            time.sleep(0.5)
+            os.replace(tmp, target)
         return True
 
     def move(self, src_rel: str, dst_rel: str) -> None:

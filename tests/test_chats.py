@@ -68,8 +68,9 @@ D = date(2026, 9, 20)
 def home(tmp_path, monkeypatch):
     h = tmp_path / "home"
     (h / ".claude" / "projects").mkdir(parents=True)
-    for var, sub in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_STATE_HOME", ".local/state"),
-                     ("XDG_DATA_HOME", ".local/share")):
+    for var, sub in (("HOME", ""), ("USERPROFILE", ""), ("XDG_CONFIG_HOME", ".config"),
+                     ("XDG_STATE_HOME", ".local/state"), ("XDG_DATA_HOME", ".local/share"),
+                     ("APPDATA", "AppData/Roaming"), ("LOCALAPPDATA", "AppData/Local")):
         monkeypatch.setenv(var, str(h / sub) if sub else str(h))
     state = h / ".local/state/claude-worklog"
     for mod in (identity, store, cli, chats):
@@ -93,7 +94,7 @@ def cfg(home):
 
 
 def records(cfg) -> dict[str, dict]:
-    return {str(p.relative_to(cfg.store_repo)): json.loads(p.read_text())
+    return {p.relative_to(cfg.store_repo).as_posix(): json.loads(p.read_text())
             for p in sorted(cfg.store_repo.rglob("records/**/*.json"))}
 
 
