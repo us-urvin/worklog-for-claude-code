@@ -11,7 +11,8 @@ New to the terminal? Start with the [step-by-step guide](GETTING-STARTED.md). So
 | **Hook** | A setting in Claude Code that tells Worklog when a session starts and ends. |
 | **Data repo** | The git folder where your log is saved. Put it on GitHub/GitLab (private!) to share it between computers. |
 | **Deploy key** | A key that lets one computer write to one repo, without your password. |
-| **Service** | A program that runs in the background and starts by itself when you log in (systemd). |
+| **Service** | A program that runs in the background and starts by itself when you log in (systemd on Linux, launchd on macOS, the Startup list and Task Scheduler on Windows). |
+| **Watcher** | The part of Worklog that notices account switches and new Claude folders while it runs. |
 | **Device** | One of your computers. Each one gets its own name. |
 
 - [Full setup (several machines)](#full-setup)
@@ -57,17 +58,17 @@ claude-worklog install-service --no-report   # on every other machine
 
 Already started with a local-only repo from the quick start? Connect it with `git -C ~/claude-worklog-data remote add origin worklog-git:<you>/claude-worklog-data.git`. The next sync pushes to it.
 
-`install-service` registers three systemd **user** units that start whenever you log in:
+`install-service` sets up three things that start whenever you log in. No admin rights are needed on any system:
 
-| Unit | What it does |
-|---|---|
-| `claude-worklog-web.service` | The web UI at `worklog.localhost:8765` (loopback only; restarts itself if it crashes) |
-| `claude-worklog-collect.timer` | Hourly sync, a backstop for sessions whose hook didn't fire |
-| `claude-worklog-report.timer` | Summaries at 23:30, re-run at 00:20 for late work (one machine only) |
+| What | Linux (systemd user units) | macOS (launchd agents) | Windows |
+|---|---|---|---|
+| The web UI at `worklog.localhost:8765` (loopback only; restarts if it crashes on Linux and macOS) | `claude-worklog-web.service` | `dev.worklog.web` | "Worklog for Claude Code" in the Startup list |
+| Hourly sync, a backstop for sessions whose hook didn't fire | `claude-worklog-collect.timer` | `dev.worklog.collect` | Task Scheduler `\Worklog\collect` |
+| Summaries at 23:30, re-run at 00:20 for late work (one machine only) | `claude-worklog-report.timer` | `dev.worklog.report` | `\Worklog\report`, `\Worklog\report-late` |
 
-The timers use `Persistent=true`, so a run missed while the machine was asleep or off happens when it wakes. To keep the services running when you aren't logged in (for example on a desktop you reach over SSH), run `sudo loginctl enable-linger $USER`.
+A run missed while the computer was asleep or off happens when it wakes, on every system. On Linux, to keep the services running when you aren't logged in (for example on a desktop you reach over SSH), run `sudo loginctl enable-linger $USER`. `claude-worklog doctor` says whether Worklog starts at login, and warns if the service points to a Python that no longer exists (run `install-service` again after a Python upgrade).
 
-`*.localhost` names resolve to your own machine in Chrome, Firefox and systemd-resolved, so no `/etc/hosts` edit is needed. `http://localhost:8765` works too. For another port: `claude-worklog install-service --port 9000`.
+`*.localhost` names resolve to your own machine in Chrome, Edge, Firefox and systemd-resolved, so no `/etc/hosts` edit is needed. Safari may not resolve them: use `http://localhost:8765` there. `http://localhost:8765` works too. For another port: `claude-worklog install-service --port 9000`.
 
 **Summaries and the model.** The daily summaries run `claude -p` with the account chosen under **Settings → Summaries**. Pick the **Model for summaries** there (Opus, Sonnet, Haiku, Fable or a model id such as `claude-opus-5-5`). It is saved as `model` in the `[report]` section and passed as `claude -p --model …`. Left on *Account default*, summaries use that account's default model. The background service doesn't see shell aliases or `ANTHROPIC_MODEL`, so set the model here.
 
@@ -142,6 +143,27 @@ Chats show up on the day they happened (not on the day you import them), under *
 
 The settings live in the `[chat]` section of the config file (`account`, `watch_downloads`, `downloads_dir`, `keep_summaries`).
 
+## Account switching and new folders
+
+Claude Code's own log files don't say which account ran a session. Worklog learns it two ways:
+
+1. **The hook** (most precise): at the start of every session it notes who is logged in.
+2. **The watcher**: while Worklog runs, it checks each Claude folder's account file every few seconds and keeps a timeline of logins. A session without a hook record gets the login that was active when it started. It works with `/login` and with any one-click account-switching app, because every switch has to change that file.
+
+Each record says how its account was found (`account_source`: `hook`, `watcher`, `folder` for a folder with only one account, or `default` when nobody knows).
+
+The watcher also looks for **Claude folders you haven't added yet** (such as `~/.claude-client`, or folders an account-switching app keeps under `~/.config`, `~/Library/Application Support` or `%APPDATA%`) and for **hooks another tool removed**. They show as a notice at the top of the page with a one-click fix: **Name it**, **Add as account** or **Reinstall hook**. Each notice can be dismissed.
+
+Turn on **Settings → Set up new accounts automatically** (`[watch] auto_setup = true`) and Worklog adds new folders as accounts and reinstalls missing hooks by itself, then leaves a note saying what it did.
+
+Only the account id and e-mail are read from the account file, as the hook does. Credentials are never opened. The timeline stays in `~/.local/state/claude-worklog/watch.json` on this device (mode 600).
+
+## The dashboard and Fun mode
+
+The day page shows your tokens, sessions, projects and time, a 14-day chart, **When you worked** (a 24-hour clock), the **last 5 weeks** with your streak, **Projects today**, and a donut of the models Claude Code used. Everything animates in gently. If your system asks apps to reduce motion, Worklog doesn't animate at all.
+
+**Fun mode** (on by default; Settings → *Fun mode*, or `[ui] fun = false`) adds a streak flame, a daily fun fact, a sleepy robot on empty days, and confetti for a record day (your biggest in 5 weeks), streak milestones and finished summaries, each only once. There's also a hidden party mode. (Hint: try typing `party` on the day page. Esc stops it.)
+
 ## Command line
 
 The UI covers everyday use. Everything is also available from the terminal:
@@ -155,7 +177,8 @@ claude-worklog report --no-ai                  # plain prompt lists, no claude -
 claude-worklog collect --days 7                # backfill a week from this machine
 claude-worklog import-chats conversations-000.zip [--account NAME] [--since DATE]  # claude.ai export
 claude-worklog install-hook [--account NAME]   # add the Claude Code hooks (backs up settings.json)
-claude-worklog install-service [--no-report] [--port N]
+claude-worklog install-service [--no-report] [--port N]   # start at login (systemd, launchd, Task Scheduler)
+claude-worklog uninstall-service              # stop starting at login (keeps your data)
 claude-worklog serve --port 8765               # run the UI in the foreground
 systemctl --user status claude-worklog-web     # service state
 journalctl --user -u claude-worklog-web -f     # live logs
@@ -194,18 +217,21 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 
 - **claude.ai chats need an export.** They aren't written to local transcripts, so they're imported from claude.ai's data export by hand or from your Downloads folder, not live, and without token counts. See [claude.ai chats](#claudeai-chats).
 - **The transcript format is unofficial.** Claude Code's `~/.claude/projects/**/*.jsonl` files are not a documented, stable API and may change in any update. The parser is defensive: lines it doesn't understand are skipped and counted, never fatal. Still, after a Claude Code upgrade it's worth comparing totals with another tool such as `npx ccusage daily`.
-- **Linux with systemd only, for now.** The background services are systemd user units. It is tested on Ubuntu. macOS and Windows aren't supported yet, and contributions are welcome.
+- **macOS and Windows support is new (0.4.0).** The automated tests run on all three systems, but Linux has had the most real-world use. Please report anything odd. On WSL, Worklog runs as on Linux and needs systemd turned on in WSL.
+- **The watcher only sees what happens while Worklog runs.** Sessions from before it noticed a login, from switches in the same few seconds as a session start, or from a tool that changes only stored credentials without updating Claude Code's account file, go to the folder's default account. The hook doesn't have the first two gaps.
 - **Tokens are not cost.** On Pro/Max plans, usage counts against limits rather than being billed, so no dollar figures are shown.
 - **Days use each device's local time.**
 - **Retention.** Claude Code deletes old transcripts after `cleanupPeriodDays` (in `settings.json`). Collection runs at least hourly, so this only matters for backfilling with `collect --days N` (up to 30).
 
 ## Uninstall
 
+The same two commands on every system:
+
 ```bash
-systemctl --user disable --now claude-worklog-web.service claude-worklog-collect.timer claude-worklog-report.timer
-rm ~/.config/systemd/user/claude-worklog-*
-systemctl --user daemon-reload
+claude-worklog uninstall-service      # stops starting at login and removes the scheduled jobs
 pipx uninstall worklog-for-claude-code
 ```
+
+On Windows, a web UI that is still running stops at your next log out, or end `pythonw.exe` in Task Manager.
 
 Then remove the `SessionStart` and `SessionEnd` entries that run `claude-worklog hook` from each account's `settings.json` (a backup from before the install sits next to it as `settings.json.bak-*`). Optionally delete `~/.config/claude-worklog/` and `~/.local/state/claude-worklog/`. Your data repo is left untouched. Delete it yourself if you no longer want it.

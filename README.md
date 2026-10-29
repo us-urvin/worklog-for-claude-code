@@ -12,7 +12,7 @@
 
 ![Worklog in action: the daily page with stat tiles, a 14-day token chart and what you worked on](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
 
-▶️ **[Watch the 1-minute video](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/media/worklog-demo.mp4)**: install, the daily page, accounts and summaries.
+▶️ **[Watch the 90-second video](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/media/worklog-demo.mp4)**: setup checklist, account switching, the animated dashboard and summaries.
 
 ## What is this?
 
@@ -22,6 +22,7 @@ At the end of a day with Claude Code it's easy to forget what you actually did. 
 - 📊 **How many tokens you used**: per day, per account and per model
 - 💻 **Everything in one place**: even if you use several computers or several Claude accounts
 - 💬 **Your claude.ai chats too** (optional): see your chats next to your coding work
+- 🎉 **A dashboard that's fun to open**: animated charts of when you worked, your streak, and a few surprises (switch them off in Settings)
 
 You set it up once. After that it runs quietly in the background.
 
@@ -29,9 +30,14 @@ You set it up once. After that it runs quietly in the background.
 
 ## What it looks like
 
-![A day in Worklog: what you worked on, written by Claude, with tokens by account and model](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day.png)
+![A day in Worklog: stat tiles, your streak, a 14-day chart and a daily fun fact](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day.png)
+
+![When you worked, the last 5 weeks with your streak, and today's projects](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/insights.png)
 
 <table><tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/checklist.png" alt="The setup checklist: what's missing, with the command for your system"><br><b>Setup checklist</b>: shows what's missing for your system, then disappears.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/notice.png" alt="New account found: name it"><br><b>Switch accounts any way you like</b>: new logins and folders are noticed for you.</td>
+</tr><tr>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/accounts.png" alt="Settings: several Claude accounts, with each login named once"><br><b>Several accounts</b>: each folder or login gets a name.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/summary-model.png" alt="Settings: pick Opus to write the daily summaries"><br><b>Pick the model</b> that writes your summaries.</td>
 </tr><tr>
@@ -60,7 +66,7 @@ Then open **http://localhost:8766** in your browser. You'll see the app filled w
 
 ## Install in 3 steps
 
-You need **Linux** (for example Ubuntu), **Python 3.10 or newer** and **[Claude Code](https://code.claude.com/docs)**.
+Works on **Linux, macOS and Windows**. You need **Python 3.10 or newer**, **git** and **[Claude Code](https://code.claude.com/docs)**. The app checks all of this for you and shows the missing steps for your system.
 
 **Step 1. Install the app**
 
@@ -70,16 +76,26 @@ pipx install worklog-for-claude-code
 
 **Step 2. Make a folder for your log and start the app**
 
+<details open><summary><b>Linux and macOS</b> (Terminal)</summary>
+
 ```bash
 git init ~/claude-worklog-data
 claude-worklog install-service
 ```
+</details>
+<details><summary><b>Windows</b> (PowerShell)</summary>
 
-The first line creates a folder where your daily log is saved. The second starts Worklog and makes it start again by itself every time you log in.
+```powershell
+git init "$HOME\claude-worklog-data"
+claude-worklog install-service
+```
+</details>
+
+The first line creates a folder where your daily log is saved. The second starts Worklog and makes it start again by itself every time you log in (with systemd on Linux, launchd on macOS, and the Startup list plus Task Scheduler on Windows; no admin rights needed).
 
 **Step 3. Finish setup in your browser**
 
-Open **http://worklog.localhost:8765**, fill in the short form (the suggested values are fine), then click **Install hook**. That last button lets Worklog notice when a Claude Code session starts and ends.
+Open **http://worklog.localhost:8765** (or http://localhost:8765), fill in the short form (the suggested values are fine), then follow the **Get Worklog ready** checklist at the top. It shows what's still missing, with the exact command for your system and a Copy button, and disappears once everything works.
 
 That's it. Use Claude Code as usual, and your log fills up on its own.
 
@@ -107,7 +123,10 @@ No. Worklog is free and open source. The optional daily summaries use your own C
 No. It only reads Claude Code's log files after a session ends, and once an hour as a backup.
 
 **Does it work on Mac or Windows?**
-Not yet, only Linux. It is tested on Ubuntu. Help with Mac and Windows is welcome.
+Yes, from version 0.4.0: Linux, macOS and Windows (WSL works too). Mac and Windows support is new, so please [report anything odd](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose).
+
+**I switch accounts with a one-click tool. Does that work?**
+Yes. While Worklog runs, it notices every account switch, whether it happens with `/login` or any account-switching app, and counts each session under the right account, even without the hook. New logins and new Claude folders show up as a notice with a one-click fix.
 
 **Do I need a GitHub account?**
 Only if you want to combine several computers. On one computer, a local folder is enough.

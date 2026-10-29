@@ -32,13 +32,12 @@ Then **close the terminal and open a new one** and try again.
 ## The page doesn't open
 
 1. Try **http://localhost:8765** instead of `worklog.localhost:8765`. Some browsers don't support the `.localhost` name.
-2. Check that Worklog is running:
+2. Check that Worklog is running: `claude-worklog doctor` shows `starts at login: yes`. To look closer:
+   - Linux: `systemctl --user status claude-worklog-web`
+   - macOS: `launchctl print gui/$(id -u)/dev.worklog.web`
+   - Windows: Task Manager → Startup apps should list "Worklog for Claude Code"
 
-   ```bash
-   systemctl --user status claude-worklog-web
-   ```
-
-   Look for `active (running)`. If it says something else, start it again:
+   If it isn't running, start it again:
 
    ```bash
    claude-worklog install-service
@@ -76,6 +75,7 @@ There are two different places a model shows up:
 1. Open **Settings** and check that every account says **Hook installed**. Sessions without a hook record go to the folder's default account.
 2. Under **Logins seen on this device**, give every login marked **No name yet** a name. Its sessions from the last 30 days move right away.
 3. Switching accounts *inside* a running session isn't tracked: a session stays with the account it started with. Start a new session after `/login`.
+4. Using a one-click account-switching app? Keep Worklog running (it starts at login after `install-service`): its watcher notices every switch, even without the hook. Sessions from times it wasn't running go to the folder's default account.
 
 ## My other computer doesn't show up
 
@@ -87,10 +87,12 @@ Worklog reads Claude Code's log files, and their format isn't official, so an up
 
 ## Reading the logs
 
-For the detailed story of what Worklog is doing:
+Worklog writes its own log on every system: `~/.local/state/claude-worklog/worklog.log` (on Windows: `%USERPROFILE%\.local\state\claude-worklog\worklog.log`). On Linux the services also log to the journal:
 
 ```bash
 journalctl --user -u claude-worklog-web -f          # the web page (Ctrl+C to stop)
 journalctl --user -u claude-worklog-collect -n 50   # the last hourly syncs
 journalctl --user -u claude-worklog-report -n 50    # the last nightly summaries
 ```
+
+On macOS, background output also goes to `~/.local/state/claude-worklog/launchd.log`.

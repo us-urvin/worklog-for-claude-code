@@ -6,6 +6,35 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
+### Added
+- **Runs on macOS and Windows**, not just Linux. `install-service` uses launchd on macOS, and the per-user
+  Startup list plus Task Scheduler on Windows (no admin rights needed); missed runs catch up after sleep on
+  every system. New `claude-worklog uninstall-service`.
+- **Right account without the hook.** While Worklog runs, a watcher notices every account switch (by
+  `/login` or any one-click account-switching app) and gives sessions the login that was active when they
+  started. It never guesses for switches at the same moment as a session start, or for times it wasn't
+  running. Records say how their account was found (`account_source`).
+- The watcher also finds Claude folders that aren't accounts yet and hooks another tool removed, and shows a
+  notice with a one-click fix. `[watch] auto_setup` does it without asking.
+- **Setup checklist**: until Worklog is fully set up, every page shows "Get Worklog ready" with what's
+  missing and the exact command for your system (Copy button). Afterwards only a small warning appears if a
+  step breaks. Settings always has the full list plus optional tips.
+- **Animated dashboard**: new charts (when you worked, the last 5 weeks with your streak, projects today,
+  a model donut), counting numbers and gentle entrance animations; reduce-motion settings are respected.
+- **Fun mode** (on by default, Settings): streak flame, a daily fun fact, a sleepy robot on empty days,
+  confetti for records and milestones, and a hidden party mode.
+- `doctor` says whether Worklog starts at login and spots a service that points to a removed Python.
+
+### Changed
+- Paths in records always use "/" and files are written with LF line endings; the data repo gets a
+  `.gitattributes`. Mac, Windows and Linux devices can share one data repo.
+- Hook commands are quoted, so install paths with spaces work.
+
+### Fixed
+- File locks and the hook's background sync no longer depend on Linux-only features.
+
 ## [0.3.0] - 2026-10-29
 
 ### Added
@@ -90,7 +119,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
