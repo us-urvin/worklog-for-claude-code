@@ -106,7 +106,7 @@ Use Claude Code as you normally do. Then open **http://worklog.localhost:8765** 
 - **At 23:30 each night**, Worklog writes a short summary of what you did in each project. Want it now? Click **Write summaries**.
 - **Use the arrows** at the top to look at earlier days. The chart shows your last 14 days of token use.
 - **Sources** lets you import your claude.ai chats ([how](GUIDE.md#claudeai-chats)).
-- **Settings** lets you add more Claude accounts or turn off AI summaries.
+- **Settings** lets you add more Claude accounts, choose the model that writes summaries (pick **Opus** for the best ones), or turn summaries off.
 
 ## What next?
 

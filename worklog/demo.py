@@ -196,6 +196,23 @@ def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = N
     cfg_path.write_text(_config(home, store), encoding="utf-8")
     cfg_path.chmod(0o600)
 
+    # Logins as the SessionStart hook records them: two share ~/.claude (one not named yet), one has its own folder.
+    from .identity import Identity, record_session
+    state = home / ".local" / "state" / "claude-worklog" / "accounts.json"
+    for sid, folder, ident in (("demo-login-1", ".claude", Identity("demo-0000-personal", "you@example.com")),
+                               ("demo-login-2", ".claude", Identity("demo-0000-client", "contractor@example.org")),
+                               ("demo-login-3", ".claude-work", Identity("demo-0000-work", "you@company.example"))):
+        record_session(sid, home / folder, ident, "start", path=state, now=now.astimezone())
+
+    # Hooks installed and some (empty) session files, so Settings looks like a set-up device.
+    from .config import Account
+    from .hooks import install_hook
+    for name, folder in (("personal", ".claude"), ("work", ".claude-work")):
+        install_hook(Account(name, home / folder))
+        for i in range(9 if name == "personal" else 6):
+            (home / folder / "projects" / "-demo" / f"demo-{i}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+            (home / folder / "projects" / "-demo" / f"demo-{i}.jsonl").touch()
+
     weights = [p["weight"] for p in PROJECTS]
     for back in range(days):
         day = now.date() - timedelta(days=back)

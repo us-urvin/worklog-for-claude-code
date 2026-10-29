@@ -10,7 +10,9 @@
 
 > Free and open source. An independent community project, not affiliated with or endorsed by Anthropic.
 
-![Daily view: a 14-day token chart, what you worked on per project, and tokens by account](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day.png)
+![Worklog in action: the daily page with stat tiles, a 14-day token chart and what you worked on](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
+
+▶️ **[Watch the 1-minute video](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/media/worklog-demo.mp4)**: install, the daily page, accounts and summaries.
 
 ## What is this?
 
@@ -24,6 +26,18 @@ At the end of a day with Claude Code it's easy to forget what you actually did. 
 You set it up once. After that it runs quietly in the background.
 
 ![How it works: Claude Code → claude-worklog → your private repo → daily work log](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/how-it-works.svg)
+
+## What it looks like
+
+![A day in Worklog: what you worked on, written by Claude, with tokens by account and model](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day.png)
+
+<table><tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/accounts.png" alt="Settings: several Claude accounts, with each login named once"><br><b>Several accounts</b>: each folder or login gets a name.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/summary-model.png" alt="Settings: pick Opus to write the daily summaries"><br><b>Pick the model</b> that writes your summaries.</td>
+</tr><tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/day-light.png" alt="The daily page in light mode"><br><b>Light mode</b> follows your system.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/phone.png" alt="The daily page on a phone-sized screen" width="220"><br><b>Fits any screen.</b></td>
+</tr></table>
 
 ## Who is it for?
 
@@ -97,6 +111,15 @@ Not yet, only Linux. It is tested on Ubuntu. Help with Mac and Windows is welcom
 
 **Do I need a GitHub account?**
 Only if you want to combine several computers. On one computer, a local folder is enough.
+
+**It says Sonnet, but I use Opus. Why?**
+The **By model** list shows the model Claude Code itself recorded for each reply. Depending on your plan, Claude Code may use Sonnet unless you pick another model with `/model`, and sub-agents often run on a smaller model (the list shows how much came from sub-agents). Run `claude-worklog doctor` to see each account's default model.
+
+**How do I get better summaries?**
+Open **Settings → Summaries** and choose **Opus** as the *Model for summaries*. By default summaries use the account's default model, which is often Sonnet.
+
+**I use several Claude accounts. How do I set that up?**
+Open **Settings**. If each account has its own folder, add each folder as an account. If you switch with `/login` in one folder, start one session with each login, then name each login once. Naming also moves that login's sessions from the last 30 days. [Details →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#multiple-accounts)
 
 **Where are my claude.ai chats?**
 claude.ai doesn't share chats with apps directly, so you import its data export on the **Sources** page. [How to import →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#claudeai-chats)

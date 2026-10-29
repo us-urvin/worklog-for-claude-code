@@ -13,6 +13,8 @@ Lines starting with ✓ are fine. Lines starting with ✗ show the problem. If n
 - [The page doesn't open](#the-page-doesnt-open)
 - [Nothing shows up for today](#nothing-shows-up-for-today)
 - [There are no summaries, only lists of prompts](#there-are-no-summaries-only-lists-of-prompts)
+- [It shows Sonnet, but I use Opus](#it-shows-sonnet-but-i-use-opus)
+- [A session is counted under the wrong account](#a-session-is-counted-under-the-wrong-account)
 - [My other computer doesn't show up](#my-other-computer-doesnt-show-up)
 - [Token numbers look wrong after a Claude Code update](#token-numbers-look-wrong-after-a-claude-code-update)
 - [Reading the logs](#reading-the-logs)
@@ -56,10 +58,24 @@ Then **close the terminal and open a new one** and try again.
 
 Summaries are written by your own Claude account using the `claude` command.
 
+- Want more accurate summaries? Set **Model for summaries** to **Opus** in **Settings**.
 - They're written at **23:30** each night. Click **Write summaries** on a day to get them now.
 - `claude-worklog doctor` must show `✓ claude binary`. If it shows `!`, Worklog can't find Claude Code and falls back to plain lists.
 - Check that AI summaries are switched on in **Settings**.
 - With several computers, only **one** of them writes summaries (the one where you ran `install-service` without `--no-report`).
+
+## It shows Sonnet, but I use Opus
+
+There are two different places a model shows up:
+
+- **The By model list** on a day shows the model Claude Code itself wrote down for each reply. If it says Sonnet, Claude Code really ran those replies on Sonnet: your plan's default, a `/model` choice, or a sub-agent (the list says how much came from sub-agents). Run `claude-worklog doctor`: it prints each account's default model (`default model: …`).
+- **The daily summaries** are written by `claude -p`. Open **Settings → Summaries** and set **Model for summaries** to **Opus**. `claude-worklog doctor` shows the model in use (`summaries are written with: …`).
+
+## A session is counted under the wrong account
+
+1. Open **Settings** and check that every account says **Hook installed**. Sessions without a hook record go to the folder's default account.
+2. Under **Logins seen on this device**, give every login marked **No name yet** a name. Its sessions from the last 30 days move right away.
+3. Switching accounts *inside* a running session isn't tracked: a session stays with the account it started with. Start a new session after `/login`.
 
 ## My other computer doesn't show up
 

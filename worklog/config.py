@@ -55,7 +55,7 @@ config_dir = "~/.claude"
 
 # Several accounts can share ONE folder (switching with /logout and /login).
 # Each extra account is matched by the login recorded at session start; name them in
-# the web UI (Settings > Detected accounts). The account without match_* is the
+# the web UI (Settings > Logins seen on this device). The account without match_* is the
 # folder's default and gets every session that matches no other account.
 # [[accounts]]
 # name = "client"

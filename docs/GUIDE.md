@@ -69,9 +69,20 @@ The timers use `Persistent=true`, so a run missed while the machine was asleep o
 
 `*.localhost` names resolve to your own machine in Chrome, Firefox and systemd-resolved, so no `/etc/hosts` edit is needed. `http://localhost:8765` works too. For another port: `claude-worklog install-service --port 9000`.
 
+**Summaries and the model.** The daily summaries run `claude -p` with the account chosen under **Settings → Summaries**. Pick the **Model for summaries** there (Opus, Sonnet, Haiku, Fable or a model id such as `claude-opus-5-5`). It is saved as `model` in the `[report]` section and passed as `claude -p --model …`. Left on *Account default*, summaries use that account's default model. The background service doesn't see shell aliases or `ANTHROPIC_MODEL`, so set the model here.
+
 The config file is `~/.config/claude-worklog/config.toml`. The UI edits it for you; `claude-worklog init` writes a commented example.
 
 ## Multiple accounts
+
+Everything is on the **Settings** page, under **Claude accounts**. First pick the setup you use:
+
+| You start accounts like this | Setup |
+|---|---|
+| `claude` for one, `CLAUDE_CONFIG_DIR=~/.claude-work claude` for another | **One folder per account** (below) |
+| always plain `claude`, switching with `/logout` and `/login` | **Several accounts in one folder** (below) |
+
+Using both is fine too.
 
 **One folder per account.** In the UI, open **Settings → Add an account**, name it (for example `work`), then log in to it once in a terminal. The UI shows the exact command:
 
@@ -85,7 +96,7 @@ Then press **Install hook** next to it. Logging in has to happen in a terminal b
 
 1. Install both hooks: `claude-worklog install-hook` (or **Install hook** in Settings). The `SessionStart` hook reads only the account id and e-mail from Claude Code's `~/.claude.json` (never credentials) and saves `session → account` in the local state file. It prints nothing.
 2. Log in with each account and start at least one session.
-3. Open **Settings → Detected accounts**. Each login appears with a masked e-mail such as `a***@example.com`. Type a name and press **Name this account**.
+3. Open **Settings → Logins seen on this device**. Each login appears with a masked e-mail such as `a***@example.com`. A login marked **No name yet** is counted under the folder's default account. Type a name and press **Name this login**.
 
 This writes an entry like the following to `config.toml` (you can also write it by hand):
 
@@ -101,7 +112,8 @@ match_account_id = "…"       # or: match_email = "you@example.com"
 ```
 
 - Sessions match by account id, then e-mail (case-insensitive). Anything else, including sessions from before the hook was installed, goes to the folder's **default** account (the one without `match_*`).
-- If you name a login after its sessions were synced, the next sync moves those records to the right account. Only hook-recorded sessions are moved.
+- Naming (or renaming) a login moves its sessions from the last 30 days to that account straight away. Days whose Claude Code logs are already deleted keep the old account. Only hook-recorded sessions are moved.
+- A login that is the only one ever seen in its own folder needs no name: it is simply counted as that folder's account.
 - Tracking is per session. If you `/login` to another account *inside* a running session, the session stays with the account it started with. Start a new session after switching.
 - Summaries run `claude -p` with whichever account is logged in to the summarizer account's folder.
 
@@ -136,7 +148,7 @@ The UI covers everyday use. Everything is also available from the terminal:
 
 ```bash
 claude-worklog demo                            # try the UI on fake data (port 8766, nothing touched)
-claude-worklog doctor                          # check config, data repo, accounts and hooks
+claude-worklog doctor                          # check config, data repo, accounts, hooks and models
 claude-worklog report --stdout                 # today's report in the terminal
 claude-worklog report --date 2026-09-25        # write reports/2026-09-25/<device>.md to the data repo
 claude-worklog report --no-ai                  # plain prompt lists, no claude -p

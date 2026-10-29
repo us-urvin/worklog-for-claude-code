@@ -6,17 +6,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-10-29
+## [0.3.0] - 2026-10-29
 
 ### Added
-- A step-by-step guide for people new to the terminal (`docs/GETTING-STARTED.md`) and a troubleshooting
-  page (`docs/TROUBLESHOOTING.md`).
-- Every page of the web UI has a small footer with the version and links to the project, help and bug reports.
-  They are plain links: nothing is loaded from outside.
+- **Choose the model that writes your summaries**: Settings → Summaries → *Model for summaries* (Opus, Sonnet,
+  Haiku, Fable or a model id), saved as `[report] model` and passed to `claude -p --model`. Before, summaries
+  always used the account's default model, often Sonnet, which made them less accurate.
+- **By model** shows readable names (Opus 5.5), each model's share and how much came from sub-agents.
+  New records carry `subagent_tokens_by_model`; older records still show, without the sub-agent split.
+- `claude-worklog doctor` prints each account's default model and the model used for summaries.
+- A step-by-step guide for people new to the terminal (`docs/GETTING-STARTED.md`), a troubleshooting page
+  (`docs/TROUBLESHOOTING.md`), a 1-minute video (`docs/media/worklog-demo.mp4`) and new screenshots.
+- Every page has a footer with the version and links to the project, help and bug reports (plain links,
+  nothing is loaded from outside).
 
 ### Changed
+- New look: dark aurora background with frosted-glass cards, stat tiles for the day, gradient buttons; a
+  matching light mode follows your system. Still fully offline under the same Content-Security-Policy.
+- Settings: accounts and detected logins are one section that explains both setups (one folder per account, or
+  one folder with `/login`). A login that is the only one in its own folder no longer asks for a name. A
+  warning shows when the summary account shares its folder with another account.
 - The README is rewritten in plain language, with who it's for, a 3-step install and common questions.
-- The guide starts with a short list of the words it uses.
+
+### Fixed
+- Naming or renaming a login only moved its sessions from the last 2 days; older days stayed under the
+  wrong account. It now moves the last 30 days right away.
+- Name fields used an HTML pattern that current browsers reject, so the browser skipped its own checks.
 
 ## [0.2.1] - 2026-10-05
 
@@ -75,8 +90,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...v0.2.2
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/us-urvin/worklog-for-claude-code/releases/tag/v0.1.0

@@ -281,7 +281,7 @@ def test_detected_accounts_panel_masks_and_names(home, repo, monkeypatch):
     identity.record_session("s", home / ".claude", identity.Identity(UID_B, "<b>" + EMAIL_B), "start")
     html_out = web._detected_section(cfg, '<input type="hidden" name="csrf" value="t">')
     assert EMAIL_B not in html_out and UID_B not in html_out and "<b><" not in html_out
-    assert "&lt;***@example.org" in html_out and "folder default" in html_out
+    assert "&lt;***@example.org" in html_out and "Counted as personal" in html_out  # only login in its folder
 
     saved = []
     monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
@@ -398,3 +398,14 @@ def test_doctor_shows_default_and_summary_models(home, repo, capsys, monkeypatch
     (home / ".claude" / "settings.json").write_text("{}")
     cli.main(["doctor"])
     assert "default model: not set: the plan default" in capsys.readouterr().out
+
+
+def test_login_panel_only_asks_for_a_name_when_logins_share_a_folder(home, repo):
+    cfg = make_cfg(home, repo)
+    c = '<input type="hidden" name="csrf" value="t">'
+    identity.record_session("s1", home / ".claude", identity.Identity(UID_A, EMAIL_A), "start")
+    one = web._detected_section(cfg, c)
+    assert "Counted as personal" in one and "/accounts/name" not in one  # its own folder: nothing to name
+    identity.record_session("s2", home / ".claude", identity.Identity(UID_B, EMAIL_B), "start")
+    two = web._detected_section(cfg, c)
+    assert two.count('action="/accounts/name"') == 2 and "No name yet" in two  # /login switching: name them

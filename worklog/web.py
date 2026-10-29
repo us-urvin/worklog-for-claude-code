@@ -181,7 +181,7 @@ radial-gradient(40vmax 30vmax at 60% 100%,var(--aurora-3),transparent 70%)}
 a{color:var(--accent);text-underline-offset:3px}
 :focus-visible{outline:2px solid var(--accent-2);outline-offset:3px;border-radius:6px}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px 56px}
-header{position:sticky;top:12px;z-index:5;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 12px 10px 16px;margin:12px 0 30px;
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 12px 10px 16px;margin:12px 0 30px;
 background:var(--glass);border:1px solid var(--rule);border-radius:18px;backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem;color:var(--ink);text-decoration:none;margin-right:auto;letter-spacing:-.01em}
 .brand svg{width:28px;height:28px;flex:none}
@@ -266,7 +266,7 @@ ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin
 .setups b{display:block;margin-bottom:4px}
 footer{margin-top:44px;padding:16px 4px 0;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
 footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
-@media (max-width:560px){.opt{display:none}header{top:8px;padding:8px}nav a{padding:6px 10px}.brand span{display:none}section.block{padding:18px}.entry{padding:18px}}
+@media (max-width:560px){.opt{display:none}header{padding:8px}nav a{padding:6px 10px}.brand span{display:none}section.block{padding:18px}.entry{padding:18px}}
 @media (prefers-reduced-motion:no-preference){svg .bar{transition:opacity .15s}a:hover .bar{opacity:.8}}
 """
 
@@ -635,22 +635,32 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
     """Logins seen by the SessionStart hook. E-mails are masked; forms carry an opaque ref, never the id."""
     by_dir = cfg.accounts_by_dir()
     rows = []
-    for login in detected_logins():
+    logins = detected_logins()
+    per_dir: dict[Path, int] = {}
+    for login in logins:
+        for d in login["dirs"]:
+            per_dir[d] = per_dir.get(d, 0) + 1
+    for login in logins:
         for d in login["dirs"]:
             if d not in by_dir:
                 continue  # folder not configured on this device
             current = cfg.resolve_account(d, login["account_id"], login["email"])
             linked = current.match_account_id == login["account_id"] or (
                 current.match_email and login["email"] and current.match_email.casefold() == login["email"].casefold())
+            seen = login["last_seen"][:16].replace("T", " ")
+            where = f'<span class="muted">folder <code>{e(home_relative(d))}</code> · last seen {e(seen)}</span>'
+            if len(by_dir[d]) == 1 and per_dir[d] == 1:  # the only login in its own folder: nothing to tell apart
+                rows.append(f'<div class="acct"><h3>{e(mask_email(login["email"]))}</h3><div class="meta">'
+                            f'<span class="pill ok">Counted as {e(current.name)}</span>{where}</div></div>')
+                continue
             status = (f'<span class="pill ok">Counted as {e(current.name)}</span>' if linked
                       else f'<span class="pill bad">No name yet</span> <span class="muted">counted as {e(current.name)} '
                            f'(folder default)</span>')
             names = "".join(f'<option value="{e(a.name)}">' for a in by_dir[d])
             list_id = f"names-{login['ref']}-{len(rows)}"
-            seen = login["last_seen"][:16].replace("T", " ")
             rows.append(
                 f'<div class="acct"><h3>{e(mask_email(login["email"]))}</h3>'
-                f'<div class="meta">{status}<span class="muted">folder <code>{e(home_relative(d))}</code> · last seen {e(seen)}</span></div>'
+                f'<div class="meta">{status}{where}</div>'
                 f'<form method="post" action="/accounts/name" class="row" style="margin-top:8px">{csrf_field}'
                 f'<input type="hidden" name="ref" value="{e(login["ref"])}"><input type="hidden" name="dir" value="{e(home_relative(d))}">'
                 f'<label for="{list_id}-in" class="muted" style="margin:0">Account name</label>'
@@ -927,7 +937,7 @@ class App:
             return None, "The Claude config folder must be inside your home folder.", form
         if any(a.config_dir == cdir for a in cfg.accounts):
             return None, ("Another account already uses that folder. To count a second login in the same folder, "
-                          "start a session with it, then name it under Detected accounts."), form
+                          "start a session with it, then name it under Logins seen on this device."), form
         cfg.accounts.append(Account(name, cdir))
         return self._save(cfg, "account_added")
 
