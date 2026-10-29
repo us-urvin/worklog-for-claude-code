@@ -88,6 +88,7 @@ auto_setup = false            # true = add new Claude folders as accounts and re
 
 [ui]
 fun = true                    # confetti on records, streak flame, sleepy robot on empty days, party mode
+check_updates = true          # once a day, ask pypi.org whether a newer version is out (nothing about you is sent)
 """
 
 
@@ -129,6 +130,7 @@ class Config:
     keep_chat_summaries: bool = False
     auto_setup: bool = False  # [watch]: add new Claude folders and reinstall vanished hooks without asking
     fun: bool = True  # [ui]: confetti, streak flame, sleepy robot, party mode
+    check_updates: bool = True  # [ui]: ask PyPI once a day whether a newer version is out
     path: Path = field(default=CONFIG_PATH)
 
     @property
@@ -304,6 +306,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         keep_chat_summaries=bool(chat.get("keep_summaries", False)),
         auto_setup=bool(_table(raw, "watch").get("auto_setup", False)),
         fun=bool(_table(raw, "ui").get("fun", True)),
+        check_updates=bool(_table(raw, "ui").get("check_updates", True)),
         path=path,
     )
     if cfg.account(cfg.summarizer_account) is None:
@@ -361,7 +364,7 @@ def dump_config(cfg: Config) -> str:
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
             f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",
             "[watch]", f"auto_setup = {b(cfg.auto_setup)}", "",
-            "[ui]", f"fun = {b(cfg.fun)}", ""]
+            "[ui]", f"fun = {b(cfg.fun)}", f"check_updates = {b(cfg.check_updates)}", ""]
     return "\n".join(out)
 
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # Distribution name on PyPI. The command stays `claude-worklog` and the package stays `worklog`.
 name = "worklog-for-claude-code"
-version = "0.4.0"
+version = "0.3.0"
 description = "See what you did with Claude Code each day and how many tokens it used: an automatic daily work log across accounts and devices, private by default"
 readme = "README.md"
 requires-python = ">=3.10"

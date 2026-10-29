@@ -18,13 +18,14 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, services, viz, watcher
+from . import __version__, chats, checks, services, updates, viz, watcher
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -283,6 +284,7 @@ ol.checks>li>details,ol.checks>li>span{min-width:0}.tips{margin-top:12px}
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
 .notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
+.notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
 @keyframes rise{from{opacity:0;transform:translateY(14px)}}
@@ -343,6 +345,10 @@ footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
 """
 
 SCRIPT = """
+(function(){var r=document.getElementById('restarting');if(!r)return;var from=r.dataset.version,tries=0;
+function poll(){tries++;fetch('/api/status',{cache:'no-store'}).then(function(x){return x.json()}).then(function(s){
+if(s.version&&s.version!==from){location.replace('/')}else if(tries<120){setTimeout(poll,1500)}}).catch(function(){if(tries<120)setTimeout(poll,1500)})}
+setTimeout(poll,1500)})();
 (function(){var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 var fun=document.body.dataset.fun==='1';
 function short(v){var u=[[1e9,'B'],[1e6,'M'],[1e3,'k']];for(var i=0;i<u.length;i++){if(v>=u[i][0]){return (v/u[i][0]).toFixed(1).replace(/\\.0$/,'')+u[i][1]}}return String(Math.round(v))}
@@ -418,6 +424,8 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
         cls = "ok" if job.get("ok") else "bad"
         cheer = (f' data-celebrate="summaries:{e(job["finished"])}|Summaries are ready ✍️"'
                  if job.get("ok") and str(job["message"]).startswith("Summaries written") else "")
+        if job.get("ok") and str(job["message"]).startswith("Updated to"):  # reload once the new version answers
+            cheer += f' id="restarting" data-version="{e(__version__)}"'
         banners += (f'<div class="banner {cls}" role="status"{cheer}>{e(job["message"])} '
                     f'<span class="muted">({e(job["finished"])})</span></div>')
     if ok in OK_MESSAGES:
@@ -845,9 +853,33 @@ def checklist_html(app: App, items: list, title: str = "Get Worklog ready", show
             f'{e(checks.OS_NAMES[checks.os_kind()])}</p></div></div><ol class="checks">{lis}</ol>{tip_html}</section>')
 
 
+def _update_html(app: App, cfg: Config) -> str:
+    """"A new version is out" with a one-click update (or the command, when we can't do it here)."""
+    new = updates.available() if cfg.check_updates and not services.demo_mode() else None
+    if not new or updates.dismissed(new):
+        return ""
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    busy = " disabled" if app.jobs.snapshot().get("running") else ""
+    if updates.upgrade_command():
+        act = f'<form method="post" action="/update">{c}<button{busy}>Update now</button></form>'
+    else:
+        cmd = updates.manual_command()
+        act = (f'<code>{e(cmd)}</code><button type="button" class="quiet copy" data-copy="{e(cmd)}">Copy</button>')
+    return (f'<div class="notice update" role="status"><span class="ico" aria-hidden="true">🎁</span>'
+            f'<span class="txt"><b>Worklog {e(new)} is out</b> (you have {e(__version__)}). '
+            f'<a href="{updates.CHANGELOG_URL}" target="_blank" rel="noopener noreferrer">What\'s new ↗</a></span>'
+            f'<span class="acts">{act}<form method="post" action="/notices/dismiss">{c}<input type="hidden" name="key" '
+            f'value="update:{e(new)}"><button class="quiet" aria-label="Dismiss">✕</button></form></span></div>')
+
+
 def top_panels(app: App, cfg: Config, active: str = "") -> str:
     """Shown under the header on every page: the setup checklist (until done) and watcher notices."""
-    out = ""
+    out = _update_html(app, cfg)
+    just = updates.pop_updated()
+    if just:
+        out = (f'<div class="banner ok" role="status" data-celebrate="updated:{e(just)}|Worklog {e(just)} is here 🎉">'
+               f'Worklog is now {e(just)}. <a href="{updates.CHANGELOG_URL}" target="_blank" '
+               f'rel="noopener noreferrer">See what\'s new ↗</a></div>') + out
     if not services.demo_mode():
         items = checks.cached(cfg, app.watcher is not None and app.watcher.running)
         broken = [x for x in items if x.required and not x.ok]
@@ -993,6 +1025,7 @@ account tool) and when a new Claude folder appears, so sessions are counted unde
 <form method="post" action="/settings/watch">{c}
 <div class="check"><input type="checkbox" id="auto_setup" name="auto_setup" value="1"{" checked" if cfg.auto_setup else ""}><label for="auto_setup">Set up new accounts automatically: add new Claude folders and reinstall missing hooks without asking</label></div>
 <div class="check"><input type="checkbox" id="fun" name="fun" value="1"{" checked" if cfg.fun else ""}><label for="fun">Fun mode: confetti on records, streak flame, sleepy robot and a hidden party mode</label></div>
+<div class="check"><input type="checkbox" id="check_updates" name="check_updates" value="1"{" checked" if cfg.check_updates else ""}><label for="check_updates">Tell me when a new version is out (asks pypi.org once a day; nothing about you is sent)</label></div>
 <div class="row"><button>Save changes</button></div></form></section>
 
 <section class="block"><h2>Summaries and daily report</h2>
@@ -1029,6 +1062,7 @@ class App:
         self.jobs = Jobs()
         self.hosts = {f"{h}:{port}" for h in ("127.0.0.1", "localhost", HOST_NAME, "[::1]")}
         self.watcher: watcher.Watcher | None = None  # started by serve(); None in tests and the demo
+        self.close = lambda: None  # set by serve(): closes the listening sockets
 
     # ---- POST handlers: return (redirect_location | None, error | None, form)
     def post(self, path: str, form: dict):
@@ -1084,10 +1118,16 @@ class App:
             key = form.get("key", "")
             if not key or len(key) > 300:
                 return None, "Unknown notice.", form
-            watcher.dismiss(key)
+            if key.startswith("update:"):
+                updates.dismiss(key.split(":", 1)[1])
+            else:
+                watcher.dismiss(key)
             return "/", None, form
+        if path == "/update":
+            return self._update(form)
         if path == "/settings/watch":
             cfg.auto_setup, cfg.fun = form.get("auto_setup") == "1", form.get("fun") == "1"
+            cfg.check_updates = form.get("check_updates") == "1"
             return self._save(cfg, "saved")
         if path == "/accounts/remove":
             name = form.get("name", "")
@@ -1203,6 +1243,27 @@ class App:
                           "start a session with it, then name it under Logins seen on this device."), form
         cfg.accounts.append(Account(name, cdir))
         return self._save(cfg, "account_added")
+
+    def _update(self, form: dict):
+        """Upgrade in the background, then restart this server on the new code (the page reloads itself)."""
+        if services.demo_mode() or updates.upgrade_command() is None:
+            return None, f"Update by hand: {updates.manual_command()}", form
+
+        def job():
+            ok, msg = updates.upgrade()
+            if not ok:
+                raise RuntimeError(msg)
+            new = updates.installed_version()
+            if new == __version__:
+                return f"Worklog {__version__} is already the newest version."
+            updates.note_updated(new)  # the new version says "Worklog is now …" once
+            threading.Timer(1.5, self.restart).start()  # let this message reach the page first
+            return f"Updated to {new}. Restarting…"
+        started = self.jobs.start("Updating Worklog", job)
+        return ("/?ok=job" if started else "/"), None, form
+
+    def restart(self) -> None:
+        updates.restart_server(self.port, self.close)
 
     def _account_add_folder(self, cfg: Config, form: dict):
         """Add a folder the watcher found: pick a free name from the folder, then install its hook."""
@@ -1352,7 +1413,8 @@ def make_handler(app: App):
                 url = urlsplit(self.path)
                 q = {k: v[0] for k, v in parse_qs(url.query).items()}
                 if url.path == "/api/status":
-                    return self._send(200, json.dumps(app.jobs.snapshot()), "application/json")
+                    return self._send(200, json.dumps({**app.jobs.snapshot(), "version": __version__}),
+                                      "application/json")
                 cfg = _try_config()
                 if url.path == "/setup" or (cfg is None and url.path in ("/", "/settings")):
                     if cfg is not None:
@@ -1433,6 +1495,19 @@ class _Server6(_Server):
     address_family = socket.AF_INET6
 
 
+def _update_loop() -> None:
+    """Ask PyPI about new versions; `updates.check` itself makes sure that's at most once a day."""
+    time.sleep(20)  # not during startup
+    while True:
+        cfg = _try_config()
+        if cfg and cfg.check_updates:
+            try:
+                updates.check()
+            except Exception:  # noqa: BLE001 - never let an update check hurt the UI
+                log.exception("update check failed")
+        time.sleep(3600)
+
+
 def serve(port: int = DEFAULT_PORT) -> None:
     app = App(port)
     if not services.demo_mode():
@@ -1449,6 +1524,9 @@ def serve(port: int = DEFAULT_PORT) -> None:
         log.info("IPv6 loopback unavailable; serving on 127.0.0.1 only")
     for s in servers[1:]:
         threading.Thread(target=s.serve_forever, daemon=True).start()
+    app.close = lambda: [s.server_close() for s in servers]
+    if not services.demo_mode():
+        threading.Thread(target=_update_loop, name="worklog-updates", daemon=True).start()
     print(f"Worklog UI: http://{HOST_NAME}:{port}  (also http://localhost:{port})", flush=True)
     try:
         servers[0].serve_forever()

@@ -151,7 +151,54 @@ def cmd_install_service(args) -> int:
     if not args.no_start:
         print(f"\n✓ Worklog UI is running: http://{HOST_NAME}:{args.port}  (or http://localhost:{args.port})")
         print("  It starts automatically whenever you log in.")
+        ask_for_star()
     return 0
+
+
+REPO = "us-urvin/worklog-for-claude-code"
+REPO_URL = f"https://github.com/{REPO}"
+
+
+def _interactive() -> bool:
+    """A person at a terminal (not a script, a hook or a background service)."""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def ask_for_star(input_fn=input) -> None:
+    """Once, in an interactive terminal: offer to star the project. Nothing happens without a "y"."""
+    from . import services
+    from .checks import set_ui_flag, ui_flag
+    if services.demo_mode() or not _interactive() or ui_flag("star_asked"):
+        return
+    set_ui_flag("star_asked")  # ask only once, whatever the answer
+    try:
+        answer = input_fn("\n⭐ Enjoying Worklog? A GitHub star helps others find it. Star it now? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if answer.strip().lower() not in ("y", "yes"):
+        print(f"  No problem. You can star it any time at {REPO_URL}")
+        return
+    gh = shutil.which("gh")
+    if gh:  # the GitHub CLI, if you're logged in to it: star with your own account
+        try:
+            r = subprocess.run([gh, "api", "--silent", "--method", "PUT", f"/user/starred/{REPO}"],
+                               capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                print("  ⭐ Starred with your GitHub account. Thank you!")
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    import webbrowser
+    opened = False
+    try:
+        opened = webbrowser.open(REPO_URL)
+    except Exception:  # noqa: BLE001 - no browser available is fine
+        opened = False
+    print(f"  {'Opened' if opened else 'Open'} {REPO_URL} and click ★ Star at the top right. Thank you!")
 
 
 def cmd_uninstall_service(args) -> int:

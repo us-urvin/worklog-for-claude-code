@@ -20,6 +20,7 @@ New to the terminal? Start with the [step-by-step guide](GETTING-STARTED.md). So
 - [Command line](#command-line)
 - [Privacy in detail](#privacy)
 - [Limitations](#limitations)
+- [Updating](#updating)
 - [Uninstall](#uninstall)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
@@ -164,6 +165,10 @@ The day page shows your tokens, sessions, projects and time, a 14-day chart, **W
 
 **Fun mode** (on by default; Settings → *Fun mode*, or `[ui] fun = false`) adds a streak flame, a daily fun fact, a sleepy robot on empty days, and confetti for a record day (your biggest in 5 weeks), streak milestones and finished summaries, each only once. There's also a hidden party mode. (Hint: try typing `party` on the day page. Esc stops it.)
 
+## Updating
+
+When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade worklog-for-claude-code` always works. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
+
 ## Command line
 
 The UI covers everyday use. Everything is also available from the terminal:
@@ -209,7 +214,7 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 
 **What is redacted.** Before anything is written, prompts and commit subjects are scrubbed of common API keys (Anthropic, OpenAI, GitHub, GitLab, Bitbucket, AWS, Slack, Google), JWTs, bearer tokens, private keys, `password=…`-style pairs, credentials in URLs, e-mail addresses and IPv4 addresses. This is **best effort**, which is why the data repo **must be private**.
 
-**Where data goes.** Records stay on your machine and in the git remote you configure for the data repo, and nowhere else. There is no telemetry and no server run by this project. One exception you control: **AI summaries** (on by default, `use_ai = true`) run your own `claude -p` once per project per day. That sends that project's redacted prompts, edited file names and commit subjects to Anthropic under your Claude account, the same way any Claude Code session does, and uses tokens. Set `use_ai = false` (or untick it in Settings) to keep summaries fully local as plain prompt lists.
+**Where data goes.** Records stay on your machine and in the git remote you configure for the data repo, and nowhere else. There is no telemetry and no server run by this project. Once a day the local service asks PyPI (`https://pypi.org/pypi/worklog-for-claude-code/json`) which version is newest; that request carries nothing about you or your work. Turn it off in Settings (*Tell me when a new version is out*) or with `[ui] check_updates = false`. One exception you control: **AI summaries** (on by default, `use_ai = true`) run your own `claude -p` once per project per day. That sends that project's redacted prompts, edited file names and commit subjects to Anthropic under your Claude account, the same way any Claude Code session does, and uses tokens. Set `use_ai = false` (or untick it in Settings) to keep summaries fully local as plain prompt lists.
 
 **The web UI** listens on 127.0.0.1 and ::1 only. It rejects requests with a non-loopback `Host` header (which blocks DNS rebinding), requires a CSRF token and a same-origin `Origin` on every form, loads nothing external, and sends a strict Content-Security-Policy. See [SECURITY.md](../SECURITY.md) to report problems.
 
@@ -217,7 +222,7 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 
 - **claude.ai chats need an export.** They aren't written to local transcripts, so they're imported from claude.ai's data export by hand or from your Downloads folder, not live, and without token counts. See [claude.ai chats](#claudeai-chats).
 - **The transcript format is unofficial.** Claude Code's `~/.claude/projects/**/*.jsonl` files are not a documented, stable API and may change in any update. The parser is defensive: lines it doesn't understand are skipped and counted, never fatal. Still, after a Claude Code upgrade it's worth comparing totals with another tool such as `npx ccusage daily`.
-- **macOS and Windows support is new (0.4.0).** The automated tests run on all three systems, but Linux has had the most real-world use. Please report anything odd. On WSL, Worklog runs as on Linux and needs systemd turned on in WSL.
+- **macOS and Windows support is new (0.3.0).** The automated tests run on all three systems, but Linux has had the most real-world use. Please report anything odd. On WSL, Worklog runs as on Linux and needs systemd turned on in WSL.
 - **The watcher only sees what happens while Worklog runs.** Sessions from before it noticed a login, from switches in the same few seconds as a session start, or from a tool that changes only stored credentials without updating Claude Code's account file, go to the folder's default account. The hook doesn't have the first two gaps.
 - **Tokens are not cost.** On Pro/Max plans, usage counts against limits rather than being billed, so no dollar figures are shown.
 - **Days use each device's local time.**

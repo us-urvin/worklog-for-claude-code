@@ -178,23 +178,32 @@ def _ui_state_path() -> Path:
     return STATE_DIR / "ui.json"
 
 
-def setup_done(path: Path | None = None) -> bool:
-    """True once every required check has passed at least once on this device."""
+def ui_flag(name: str, path: Path | None = None) -> bool:
+    """A remembered yes/no on this device (setup_done, star_asked)."""
     try:
-        return bool(json.loads((path or _ui_state_path()).read_text(encoding="utf-8")).get("setup_done"))
+        return bool(json.loads((path or _ui_state_path()).read_text(encoding="utf-8")).get(name))
     except (OSError, ValueError, AttributeError):
         return False
 
 
-def mark_setup_done(path: Path | None = None) -> None:
+def set_ui_flag(name: str, path: Path | None = None) -> None:
     path = path or _ui_state_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         data = {}
-    if data.get("setup_done"):
+    if data.get(name):
         return
-    data["setup_done"] = True
+    data[name] = True
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def setup_done(path: Path | None = None) -> bool:
+    """True once every required check has passed at least once on this device."""
+    return ui_flag("setup_done", path)
+
+
+def mark_setup_done(path: Path | None = None) -> None:
+    set_ui_flag("setup_done", path)

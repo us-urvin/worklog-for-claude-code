@@ -227,3 +227,47 @@ def test_doctor_spots_a_service_pointing_at_a_missing_python(monkeypatch, fake, 
     unit.write_text(unit.read_text().replace(sys.executable, "/gone/python3"))
     assert cli.main(["doctor"]) == 1
     assert "/gone/python3, which no longer exists" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ the one-time star question
+@pytest.fixture
+def star_env(home, monkeypatch):
+    from worklog import checks, cli
+    monkeypatch.setattr(checks, "_ui_state_path", lambda: home / ".local/state/claude-worklog/ui.json")
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.delenv(services.DEMO_ENV, raising=False)
+    calls = []
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0)
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    opened = []
+    import webbrowser
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+    return cli, calls, opened
+
+
+def test_star_question_uses_gh_when_logged_in_and_asks_only_once(star_env, monkeypatch):
+    cli, calls, opened = star_env
+    monkeypatch.setattr(cli.shutil, "which", lambda n: "/usr/bin/gh" if n == "gh" else None)
+    cli.ask_for_star(lambda prompt: "y")
+    assert calls == [["/usr/bin/gh", "api", "--silent", "--method", "PUT",
+                      "/user/starred/us-urvin/worklog-for-claude-code"]]
+    cli.ask_for_star(lambda prompt: pytest.fail("asked twice"))  # never again
+
+
+def test_star_question_opens_the_browser_without_gh(star_env, monkeypatch):
+    cli, calls, opened = star_env
+    monkeypatch.setattr(cli.shutil, "which", lambda n: None)
+    cli.ask_for_star(lambda prompt: "yes")
+    assert opened == ["https://github.com/us-urvin/worklog-for-claude-code"] and calls == []
+
+
+def test_star_question_does_nothing_on_no_or_without_a_terminal(star_env, monkeypatch):
+    cli, calls, opened = star_env
+    cli.ask_for_star(lambda prompt: "")  # Enter = no
+    assert calls == [] and opened == []
+    from worklog import checks
+    (checks._ui_state_path()).unlink()
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    cli.ask_for_star(lambda prompt: pytest.fail("asked without a terminal"))
