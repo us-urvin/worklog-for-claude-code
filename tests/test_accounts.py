@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from worklog import cli, collector, identity, store, web
+from worklog import cli, collector, identity, web
 from worklog.config import Account, Config, ConfigError, dump_config, load_config
 from worklog.hooks import install_hook, installed_events
 
@@ -21,23 +21,7 @@ UID_A, EMAIL_A = "11111111-aaaa-4aaa-8aaa-111111111111", "alice.personal@example
 UID_B, EMAIL_B = "22222222-bbbb-4bbb-8bbb-222222222222", "bob.work@example.org"
 
 
-# ------------------------------------------------------------------ fixtures
-@pytest.fixture
-def home(tmp_path, monkeypatch):
-    """A throwaway HOME; state and logs are redirected into it too."""
-    h = tmp_path / "home"
-    (h / ".claude" / "projects").mkdir(parents=True)
-    for var, sub in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_STATE_HOME", ".local/state"),
-                     ("XDG_DATA_HOME", ".local/share")):
-        monkeypatch.setenv(var, str(h / sub) if sub else str(h))
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    state = h / ".local/state/claude-worklog"
-    for mod in (identity, store, cli):
-        monkeypatch.setattr(mod, "STATE_DIR", state)
-    assert Path.home() == h  # guard: never run against the real home
-    return h
-
-
+# ------------------------------------------------------------------ helpers (fixtures: conftest.py)
 def login(home: Path, uid: str | None, email: str | None, path: Path | None = None) -> None:
     """Simulate `/login`: write oauthAccount (no credentials) into the fake ~/.claude.json."""
     path = path or home / ".claude.json"
@@ -59,14 +43,6 @@ def transcript(home: Path, sid: str, ts: datetime, cwd: Path, tokens: int = 100)
                      "usage": {"input_tokens": tokens, "output_tokens": 1}}},
     ]
     (d / f"{sid}.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
-
-
-@pytest.fixture
-def repo(home):
-    r = home / "data"
-    r.mkdir()
-    subprocess.run(["git", "init", "-q", str(r)], check=True)
-    return r
 
 
 def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:

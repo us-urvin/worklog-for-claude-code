@@ -35,6 +35,8 @@ class ParseStats:
     files: int = 0
     lines: int = 0
     bad_lines: int = 0
+    # Earliest timestamp seen per session in any file, on any day: when the session really started.
+    session_first: dict[str, datetime] = field(default_factory=dict)
 
 
 @dataclass
@@ -140,7 +142,12 @@ def parse_transcript(
     """
     for entry in _entries(path, stats):
         ts = parse_ts(entry.get("timestamp"))
-        if ts is None or ts.date() != day:
+        if ts is None:
+            continue
+        first_sid = str(entry.get("sessionId") or path.stem)
+        if first_sid not in stats.session_first or ts < stats.session_first[first_sid]:
+            stats.session_first[first_sid] = ts
+        if ts.date() != day:
             continue
         uuid = entry.get("uuid")
         if isinstance(uuid, str):

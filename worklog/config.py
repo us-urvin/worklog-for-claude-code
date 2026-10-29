@@ -81,6 +81,13 @@ account = ""                  # worklog account for imported chats; empty = the 
 watch_downloads = false       # import new conversations-*.zip files found in downloads_dir on each sync
 downloads_dir = ""            # empty = your Downloads folder
 keep_summaries = false        # also keep claude.ai's own per-chat summary (written by Claude), shortened and redacted
+
+[watch]
+# While the web UI runs, it notices account switches (by /login or any one-click tool) and new Claude folders.
+auto_setup = false            # true = add new Claude folders as accounts and reinstall missing hooks without asking
+
+[ui]
+fun = true                    # confetti on records, streak flame, sleepy robot on empty days, party mode
 """
 
 
@@ -120,6 +127,8 @@ class Config:
     watch_downloads: bool = False
     downloads_dir: Path | None = None
     keep_chat_summaries: bool = False
+    auto_setup: bool = False  # [watch]: add new Claude folders and reinstall vanished hooks without asking
+    fun: bool = True  # [ui]: confetti, streak flame, sleepy robot, party mode
     path: Path = field(default=CONFIG_PATH)
 
     @property
@@ -196,6 +205,13 @@ def _match_id(name: str, v: object) -> str | None:
     if not isinstance(v, str) or not _ACCOUNT_ID_RE.match(v):
         raise ConfigError(f"account {name}: match_account_id must be the account id from Claude Code")
     return v
+
+
+def _table(raw: dict, name: str) -> dict:
+    t = raw.get(name, {})
+    if not isinstance(t, dict):
+        raise ConfigError(f"[{name}] must be a table")
+    return t
 
 
 def _model(v: object) -> str:
@@ -286,6 +302,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
         keep_chat_summaries=bool(chat.get("keep_summaries", False)),
+        auto_setup=bool(_table(raw, "watch").get("auto_setup", False)),
+        fun=bool(_table(raw, "ui").get("fun", True)),
         path=path,
     )
     if cfg.account(cfg.summarizer_account) is None:
@@ -336,7 +354,9 @@ def dump_config(cfg: Config) -> str:
             f"ai_timeout_seconds = {cfg.ai_timeout}", "",
             "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
-            f"keep_summaries = {b(cfg.keep_chat_summaries)}", ""]
+            f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",
+            "[watch]", f"auto_setup = {b(cfg.auto_setup)}", "",
+            "[ui]", f"fun = {b(cfg.fun)}", ""]
     return "\n".join(out)
 
 

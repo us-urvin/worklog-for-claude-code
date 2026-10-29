@@ -197,6 +197,23 @@ def record_session(session_id: str, config_dir: Path, ident: Identity | None, ev
         _save_state(state, path)
 
 
+def note_login(config_dir: Path, ident: Identity, path: Path | None = None, now: datetime | None = None,
+               timeout: float = 2.0) -> None:
+    """Remember a login seen in `config_dir` without a session (the watcher noticed it)."""
+    path = path or state_path()
+    stamp = (now or datetime.now().astimezone()).isoformat(timespec="seconds")
+    with _lock(path, timeout):
+        state = load_state(path)
+        login = state["logins"].setdefault(ident.account_id, {"first_seen": stamp, "dirs": []})
+        login["last_seen"] = stamp
+        if ident.email:
+            login["email"] = ident.email
+        d = home_relative(config_dir)
+        if d not in login.get("dirs", []):
+            login["dirs"] = sorted({*login.get("dirs", []), d})
+        _save_state(state, path)
+
+
 def session_logins(path: Path | None = None) -> dict[str, Identity]:
     """session_id -> Identity for every session with a recorded account."""
     state = load_state(path)

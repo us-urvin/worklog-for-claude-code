@@ -9,10 +9,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import SUMMARIZER_CWD, Account, Config
-from .identity import Identity, session_logins
+from .identity import Identity, load_state, session_logins
 from .parser import ParseStats, SessionDay, parse_transcript
 from .redact import redact
 from .store import GitStore
+from .watcher import load_state as watch_state
+from .watcher import login_at
 
 log = logging.getLogger(__name__)
 SCHEMA = 1
@@ -160,9 +162,26 @@ def _move_stale(store: GitStore, day: date, device: str, account: str, fname: st
     return moved
 
 
+def _watched_login(watched: dict, config_dir: Path, started: datetime | None,
+                   shared: bool) -> tuple[Identity | None, str]:
+    """(login, source) for a session the hook didn't record.
+
+    "watcher": the watcher saw who was logged in when the session started.
+    "folder":  the folder has a single account, so it can only be that one.
+    "default": several accounts share the folder and nobody knows; the folder default is used.
+    """
+    if started is not None:
+        m = login_at(watched, config_dir, started)
+        if m.status == "match" and m.account_id:
+            email = (load_state().get("logins", {}).get(m.account_id) or {}).get("email")
+            return Identity(m.account_id, email if isinstance(email, str) else None), "watcher"
+    return None, "default" if shared else "folder"
+
+
 def collect(cfg: Config, days: list[date]) -> int:
     store = GitStore(cfg.store_repo)
     logins: dict[str, Identity] = session_logins()  # local state written by the SessionStart hook
+    watched = watch_state()  # login timeline kept by the watcher (covers sessions without a hook record)
     written = 0
     with store.lock():
         store.pull()
@@ -181,11 +200,16 @@ def collect(cfg: Config, days: list[date]) -> int:
                         log.warning("cannot read %s: %s", path, exc)
                 for sd in sessions.values():
                     login = logins.get(sd.session_id)
+                    source = "hook"
+                    if login is None:
+                        login, source = _watched_login(watched, config_dir, stats.session_first.get(sd.session_id),
+                                                       shared=len(group) > 1)
                     account = (cfg.resolve_account(config_dir, login.account_id, login.email) if login
                                else cfg.default_account(config_dir))  # unrecorded / older sessions
                     record = build_record(sd, account, cfg)
                     if record is None:
                         continue
+                    record["account_source"] = source
                     fname = f"{_SAFE.sub('_', sd.session_id)}.json"
                     if login:
                         written += _move_stale(store, day, cfg.device, account.name, fname)

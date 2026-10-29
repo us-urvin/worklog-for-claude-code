@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, services
+from . import __version__, chats, services, watcher
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -264,6 +264,11 @@ ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin
 .setups{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 16px}@media (max-width:700px){.setups{grid-template-columns:1fr}}
 .setups div{border:1px solid var(--rule);border-radius:14px;padding:12px 14px;background:var(--glass-hi);font-size:.9rem}
 .setups b{display:block;margin-bottom:4px}
+.notice{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px;border-radius:16px;
+background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+.notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
+.notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
+.notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 footer{margin-top:44px;padding:16px 4px 0;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
 footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
 @media (max-width:560px){.opt{display:none}header{padding:8px}nav a{padding:6px 10px}.brand span{display:none}section.block{padding:18px}.entry{padding:18px}}
@@ -304,7 +309,8 @@ LOGO = ('<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="l
         '<rect x="21" y="7" width="4" height="18" rx="2" fill="#0B0F24"/></svg>')
 
 
-def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None) -> str:
+def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None,
+           extra: str = "") -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
                                   ("settings", "/settings", "Settings")))
@@ -318,6 +324,7 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
         banners += f'<div class="banner ok" role="status">{e(OK_MESSAGES[ok])}</div>'
     if error:
         banners += f'<div class="banner bad" role="alert">{e(error)}</div>'
+    banners += extra
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} – Worklog</title>
 <style>{CSS}</style></head><body><div class="wrap">
@@ -627,6 +634,42 @@ If this device already has a clone, just enter its folder. Otherwise also paste 
 <button>Save setup</button></form>"""
 
 
+NOTICE_ICONS = {"login": "👤", "folder": "📁", "hook": "🪝", "apikey": "🔑", "note": "✨"}
+
+
+def _notices_html(app: App, cfg: Config) -> str:
+    """Watcher notices: new logins and folders, vanished hooks, auto-setup notes. Each can be dismissed."""
+    try:
+        items = watcher.notices(cfg)
+    except Exception:  # noqa: BLE001 - a damaged state file must not break every page
+        log.exception("could not build notices")
+        return ""
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    rows = []
+    for n in items[:5]:
+        if n["kind"] == "folder":
+            act = (f'<form method="post" action="/accounts/add-folder">{c}<input type="hidden" name="folder" '
+                   f'value="{e(n["folder"])}"><button>Add as account</button></form>')
+        elif n["kind"] == "hook":
+            act = (f'<form method="post" action="/accounts/hook">{c}<input type="hidden" name="name" '
+                   f'value="{e(n["account"])}"><button>Reinstall hook</button></form>')
+        elif n["kind"] == "login":
+            act = '<a class="btn" href="/settings#logins">Name it</a>'
+        else:
+            act = ""
+        dismiss = (f'<form method="post" action="/notices/dismiss">{c}<input type="hidden" name="key" value="{e(n["key"])}">'
+                   f'<button class="quiet" aria-label="Dismiss">✕</button></form>')
+        rows.append(f'<div class="notice {e(n["kind"])}" role="status"><span class="ico" aria-hidden="true">'
+                    f'{NOTICE_ICONS.get(n["kind"], "•")}</span><span class="txt">{e(n["text"])}</span>'
+                    f'<span class="acts">{act}{dismiss}</span></div>')
+    return "".join(rows)
+
+
+def top_panels(app: App, cfg: Config) -> str:
+    """Shown under the header on every page: the setup checklist (until done) and watcher notices."""
+    return _notices_html(app, cfg)
+
+
 MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)"),
                  ("haiku", "Haiku (latest)"), ("fable", "Fable (latest)"))
 
@@ -669,7 +712,7 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
                 f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button></form></div>')
     body = "".join(rows) or ('<div class="empty">No logins recorded yet. Install the hook, then start a Claude Code '
                              'session. Each account you log in with appears here.</div>')
-    return (f'<h3 style="margin-top:22px">Logins seen on this device</h3><p class="help" style="margin-top:6px">Each account '
+    return (f'<h3 id="logins" style="margin-top:22px">Logins seen on this device</h3><p class="help" style="margin-top:6px">Each account '
             f'you were logged in with when a session started. A login with <b>No name yet</b> is counted under the '
             f'folder&#39;s default account: give it a name to count it separately. Naming also moves its sessions from the '
             f'last {REFILE_DAYS} days. Only the name is written to your data repo; the e-mail and account id stay on this '
@@ -731,6 +774,9 @@ def page_settings(app: App, cfg: Config) -> str:
     svc = services.status()
     svc_rows = "".join(f"<tr><td><code>{e(u)}</code></td><td>{e(s)}</td></tr>" for u, s in svc.items())
     report_on = services.report_timer_enabled()
+    running = app.watcher is not None and app.watcher.running
+    watch_state = ('<span class="state-ok">Watching now.</span>' if running else
+                   '<span class="muted">Not watching in this window (it runs in the background service).</span>')
     return f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
 <section class="block" style="margin-top:24px"><h2>Claude accounts</h2>
 <p class="help">Worklog counts every Claude Code session under one of these accounts. Pick the setup that matches how you use Claude Code:</p>
@@ -741,10 +787,19 @@ def page_settings(app: App, cfg: Config) -> str:
 <i>Logins seen on this device</i>.</div></div>
 {"".join(rows)}
 {detected}
-<form method="post" action="/accounts/add" style="border-top:1px solid var(--rule);padding-top:16px;margin-top:18px">{c}
+<form id="add" method="post" action="/accounts/add" style="border-top:1px solid var(--rule);padding-top:16px;margin-top:18px">{c}
 <h3>Add an account in its own folder</h3><label for="name">Name</label><input type="text" id="name" name="name" placeholder="work" required pattern="{NAME_PATTERN}">
 <label for="dir">Claude config folder (leave empty for <code>~/.claude-&lt;name&gt;</code>)</label><input type="text" id="dir" name="dir" placeholder="~/.claude-work">
 <div class="row"><button>Add account</button></div></form></section>
+
+<section class="block"><h2>Account switching and extras</h2>
+<p class="help">While Worklog runs, it notices when you switch Claude accounts (with <code>/login</code> or any one-click
+account tool) and when a new Claude folder appears, so sessions are counted under the right account even without a hook.
+{watch_state}</p>
+<form method="post" action="/settings/watch">{c}
+<div class="check"><input type="checkbox" id="auto_setup" name="auto_setup" value="1"{" checked" if cfg.auto_setup else ""}><label for="auto_setup">Set up new accounts automatically: add new Claude folders and reinstall missing hooks without asking</label></div>
+<div class="check"><input type="checkbox" id="fun" name="fun" value="1"{" checked" if cfg.fun else ""}><label for="fun">Fun mode: confetti on records, streak flame, sleepy robot and a hidden party mode</label></div>
+<div class="row"><button>Save changes</button></div></form></section>
 
 <section class="block"><h2>Summaries and daily report</h2>
 <form method="post" action="/settings/report">{c}
@@ -779,6 +834,7 @@ class App:
         self.csrf = secrets.token_urlsafe(32)
         self.jobs = Jobs()
         self.hosts = {f"{h}:{port}" for h in ("127.0.0.1", "localhost", HOST_NAME, "[::1]")}
+        self.watcher: watcher.Watcher | None = None  # started by serve(); None in tests and the demo
 
     # ---- POST handlers: return (redirect_location | None, error | None, form)
     def post(self, path: str, form: dict):
@@ -828,6 +884,17 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/accounts/add-folder":
+            return self._account_add_folder(cfg, form)
+        if path == "/notices/dismiss":
+            key = form.get("key", "")
+            if not key or len(key) > 300:
+                return None, "Unknown notice.", form
+            watcher.dismiss(key)
+            return "/", None, form
+        if path == "/settings/watch":
+            cfg.auto_setup, cfg.fun = form.get("auto_setup") == "1", form.get("fun") == "1"
+            return self._save(cfg, "saved")
         if path == "/accounts/remove":
             name = form.get("name", "")
             keep = [a for a in cfg.accounts if a.name != name]
@@ -940,6 +1007,22 @@ class App:
                           "start a session with it, then name it under Logins seen on this device."), form
         cfg.accounts.append(Account(name, cdir))
         return self._save(cfg, "account_added")
+
+    def _account_add_folder(self, cfg: Config, form: dict):
+        """Add a folder the watcher found: pick a free name from the folder, then install its hook."""
+        folder = _expand(form.get("folder", ""))
+        if not under_home(folder) or not watcher.is_claude_folder(folder):
+            return None, "That isn't a Claude folder inside your home folder.", form
+        if any(a.config_dir == folder for a in cfg.accounts):
+            return "/settings?ok=saved", None, form
+        name = watcher.auto_name(folder, {a.name for a in cfg.accounts})
+        cfg.accounts.append(Account(name, folder))
+        loc, err, kept = self._save(cfg, "account_added")
+        if err is None:
+            ok, msg = install_hook(Account(name, folder))
+            if not ok:
+                return None, f"Added {name}, but the hook could not be installed: {msg}", form
+        return loc, err, kept
 
     def _account_name(self, cfg: Config, form: dict):
         """Give a detected login a name: link it to an existing account in its folder, or add one."""
@@ -1060,7 +1143,9 @@ def make_handler(app: App):
 
         def _page(self, title, body, active, ok=None, error=None, status=200):
             nonce = secrets.token_urlsafe(16)
-            self._send(status, layout(title, body, active, nonce, app.jobs.snapshot(), ok, error), nonce=nonce)
+            cfg = _try_config() if title != "Set up" else None
+            extra = top_panels(app, cfg) if cfg else ""
+            self._send(status, layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra), nonce=nonce)
 
         # ---------------------------------------------------------- GET
         def do_GET(self):
@@ -1153,6 +1238,9 @@ class _Server6(_Server):
 
 def serve(port: int = DEFAULT_PORT) -> None:
     app = App(port)
+    if not services.demo_mode():
+        app.watcher = watcher.Watcher()
+        app.watcher.start()
     handler = make_handler(app)
     try:
         servers = [_Server(("127.0.0.1", port), handler)]
