@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, services, watcher
+from . import __version__, chats, checks, services, watcher
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -264,7 +264,21 @@ ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin
 .setups{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 16px}@media (max-width:700px){.setups{grid-template-columns:1fr}}
 .setups div{border:1px solid var(--rule);border-radius:14px;padding:12px 14px;background:var(--glass-hi);font-size:.9rem}
 .setups b{display:block;margin-bottom:4px}
-.notice{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px;border-radius:16px;
+.checklist{padding:20px 22px;margin-bottom:18px;border-radius:20px;background:var(--glass);border:1px solid color-mix(in srgb,var(--accent) 50%,var(--rule));
+backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--glow),var(--shadow)}
+.clhead{display:flex;gap:16px;align-items:center;margin-bottom:6px}.clhead h2{margin:0}.clhead p{margin:2px 0 0}
+.ring{width:64px;height:64px;flex:none}.ring .track{fill:none;stroke:var(--glass-hi);stroke-width:5}
+.ring .fill{fill:none;stroke:var(--accent-2);stroke-width:5;stroke-linecap:round}
+.ring text{font:800 10px/1 system-ui,sans-serif;fill:var(--ink)}
+ol.checks{list-style:none;margin:10px 0 0;padding:0}ol.checks>li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--rule)}
+ol.checks>li:first-child{border-top:0}ol.checks .tick{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+font-weight:800;font-size:.8rem;border:2px solid var(--rule);color:var(--muted)}ol.checks .tick.ok{background:var(--ok);border-color:var(--ok);color:var(--on-accent)}
+ol.checks li.done span:last-child{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 50%,transparent)}
+ol.checks details{margin:0;flex:1;font-size:.95rem}ol.checks summary{color:var(--ink);font-weight:700}
+.fix{padding:6px 0 4px}.fix p{margin:6px 0;max-width:72ch}.fix .why{color:var(--muted)}
+.cmdrow{display:flex;gap:8px;align-items:center;min-width:0}.cmdrow .cmd{flex:1;margin:4px 0;min-width:0}
+ol.checks>li>details,ol.checks>li>span{min-width:0}.tips{margin-top:12px}
+gap:12px;align-items:center;flex-wrap:wrap;padding:12px 14px;margin-bottom:12px;border-radius:16px;
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
 .notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
@@ -276,6 +290,11 @@ footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
 """
 
 SCRIPT = """
+document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('button.copy');if(!b)return;
+var say=function(m){b.textContent=m;setTimeout(function(){b.textContent='Copy'},1600)};
+var manual=function(){var pre=b.parentNode.querySelector('pre');if(pre){var r=document.createRange();r.selectNodeContents(pre);
+var s=window.getSelection();s.removeAllRanges();s.addRange(r)}say(navigator.platform.indexOf('Mac')===0?'Press \u2318C':'Press Ctrl+C')};
+if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(b.dataset.copy).then(function(){say('Copied!')},manual)}else{manual()}});
 (function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
 function sync(){t.hidden=s.value!=='custom'}s.addEventListener('change',function(){sync();if(!t.hidden)t.focus()});sync()})();
 (function(){var b=document.getElementById('jobstate');if(!b||b.dataset.running!=='1')return;
@@ -620,7 +639,9 @@ def page_setup(app: App, form: dict | None = None) -> str:
     def v(k: str, d: str = "") -> str:
         return e(f.get(k, d))
 
-    return f"""<h1>Set up this device<small>One time only. You can change everything later in Settings.</small></h1>
+    basics = checks.run(None)
+    pre = "" if all(x.ok for x in basics) else checklist_html(app, basics, "Before you start", show_tips=False)
+    return pre + f"""<h1>Set up this device<small>One time only. You can change everything later in Settings.</small></h1>
 <form method="post" action="/setup" style="margin-top:24px"><input type="hidden" name="csrf" value="{app.csrf}">
 <section class="block"><h2>This device</h2><p class="help">A short name so the report can tell your machines apart. Use a different name on each device.</p>
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{v('device', default_device)}" required pattern="{NAME_PATTERN}"></section>
@@ -665,9 +686,66 @@ def _notices_html(app: App, cfg: Config) -> str:
     return "".join(rows)
 
 
-def top_panels(app: App, cfg: Config) -> str:
+def _ring(done: int, total: int) -> str:
+    frac = done / total if total else 1
+    c = 2 * 3.14159 * 16
+    return (f'<svg class="ring" viewBox="0 0 40 40" role="img" aria-label="{done} of {total} done">'
+            f'<circle cx="20" cy="20" r="16" class="track"/><circle cx="20" cy="20" r="16" class="fill" '
+            f'stroke-dasharray="{c * frac:.1f} {c:.1f}" transform="rotate(-90 20 20)"/>'
+            f'<text x="20" y="24.5" text-anchor="middle">{done}/{total}</text></svg>')
+
+
+def _check_item(app: App, ch: checks.Check, open_: bool) -> str:
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    icon = '<span class="tick ok" aria-label="done">✓</span>' if ch.ok else '<span class="tick" aria-label="to do">○</span>'
+    if ch.ok:
+        return f'<li class="done">{icon}<span>{e(ch.label)}</span></li>'
+    body = f'<p class="why">{e(ch.why)}</p>' if ch.why else ""
+    for text, cmd in ch.steps:
+        body += f"<p>{e(text)}</p>" if text else ""
+        if cmd:
+            body += (f'<div class="cmdrow"><pre class="cmd">{e(cmd)}</pre>'
+                     f'<button type="button" class="quiet copy" data-copy="{e(cmd)}">Copy</button></div>')
+    if ch.link:
+        body += f'<p><a href="{e(ch.link[1])}" target="_blank" rel="noopener noreferrer">{e(ch.link[0])} ↗</a></p>'
+    if ch.action.startswith("install_hook:"):
+        body += (f'<form method="post" action="/accounts/hook">{c}<input type="hidden" name="name" '
+                 f'value="{e(ch.action.split(":", 1)[1])}"><button>Install hook</button></form>')
+    return (f'<li class="todo">{icon}<details{" open" if open_ else ""}><summary>{e(ch.label)}</summary>'
+            f'<div class="fix">{body}</div></details></li>')
+
+
+def checklist_html(app: App, items: list, title: str = "Get Worklog ready", show_tips: bool = True) -> str:
+    req = [x for x in items if x.required]
+    tips = [x for x in items if not x.required]
+    done = sum(x.ok for x in req)
+    first_todo = next((x.id for x in req if not x.ok), None)
+    lis = "".join(_check_item(app, x, x.id == first_todo) for x in req)
+    tip_html = ""
+    if show_tips and tips:
+        tip_html = (f'<details class="tips"><summary>Make it even better (optional) · '
+                    f'{sum(x.ok for x in tips)} of {len(tips)}</summary><ol class="checks">'
+                    + "".join(_check_item(app, x, False) for x in tips) + "</ol></details>")
+    return (f'<section class="checklist" id="checklist" aria-label="{e(title)}"><div class="clhead">{_ring(done, len(req))}'
+            f'<div><h2>{e(title)}</h2><p class="muted">{done} of {len(req)} done · steps shown for '
+            f'{e(checks.OS_NAMES[checks.os_kind()])}</p></div></div><ol class="checks">{lis}</ol>{tip_html}</section>')
+
+
+def top_panels(app: App, cfg: Config, active: str = "") -> str:
     """Shown under the header on every page: the setup checklist (until done) and watcher notices."""
-    return _notices_html(app, cfg)
+    out = ""
+    if not services.demo_mode():
+        items = checks.cached(cfg, app.watcher is not None and app.watcher.running)
+        broken = [x for x in items if x.required and not x.ok]
+        if not broken:
+            checks.mark_setup_done()
+        elif checks.setup_done():  # set up once already: just flag what broke, not the whole list
+            out += "".join(f'<div class="notice hook" role="alert"><span class="ico" aria-hidden="true">⚠️</span>'
+                           f'<span class="txt">{e(x.label)}: this stopped working.</span><span class="acts">'
+                           f'<a class="btn" href="/settings#checklist">Fix it</a></span></div>' for x in broken)
+        elif active != "settings":  # Settings shows the full checklist in its own section
+            out += checklist_html(app, items)
+    return out + _notices_html(app, cfg)
 
 
 MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)"),
@@ -792,6 +870,8 @@ def page_settings(app: App, cfg: Config) -> str:
 <label for="dir">Claude config folder (leave empty for <code>~/.claude-&lt;name&gt;</code>)</label><input type="text" id="dir" name="dir" placeholder="~/.claude-work">
 <div class="row"><button>Add account</button></div></form></section>
 
+{"" if services.demo_mode() else checklist_html(app, checks.cached(cfg, running), "Setup checklist")}
+
 <section class="block"><h2>Account switching and extras</h2>
 <p class="help">While Worklog runs, it notices when you switch Claude accounts (with <code>/login</code> or any one-click
 account tool) and when a new Claude folder appears, so sessions are counted under the right account even without a hook.
@@ -913,6 +993,7 @@ class App:
             if acct is None:
                 return None, "Unknown account.", form
             ok, msg = install_hook(acct)
+            checks.forget_cache()
             return ("/settings?ok=saved" if ok else None), (None if ok else msg), form
         if path == "/settings/report":
             summ = form.get("summarizer", "")
@@ -947,6 +1028,7 @@ class App:
         return None, "Unknown action.", form
 
     def _save(self, cfg: Config, ok: str, page: str = "/settings"):
+        checks.forget_cache()
         try:
             save_config(cfg)
         except (ConfigError, OSError) as exc:
@@ -1144,7 +1226,7 @@ def make_handler(app: App):
         def _page(self, title, body, active, ok=None, error=None, status=200):
             nonce = secrets.token_urlsafe(16)
             cfg = _try_config() if title != "Set up" else None
-            extra = top_panels(app, cfg) if cfg else ""
+            extra = top_panels(app, cfg, active) if cfg else ""
             self._send(status, layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra), nonce=nonce)
 
         # ---------------------------------------------------------- GET

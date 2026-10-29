@@ -132,6 +132,18 @@ def status() -> dict[str, str]:
     return out
 
 
+def autostart_ok() -> bool | None:
+    """Whether Worklog starts by itself at login. None when it can't be known (demo mode)."""
+    if demo_mode():
+        return None
+    if not available():
+        return False
+    try:
+        return _systemctl("is-enabled", WEB).stdout.strip() == "enabled"
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def report_timer_enabled() -> bool:
     try:
         return available() and _systemctl("is-enabled", REPORT).stdout.strip() == "enabled"
