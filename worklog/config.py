@@ -32,6 +32,8 @@ DEFAULT_CLAUDE_DIR = Path.home() / ".claude"
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _ACCOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
+# A Claude Code model alias (opus, sonnet, haiku) or full id (claude-opus-5-5, claude-sonnet-5-5[1m]).
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,99}$")
 
 EXAMPLE_CONFIG = """\
 # claude-worklog configuration
@@ -70,6 +72,7 @@ max_prompt_chars = 300
 use_ai = true                 # summarize with `claude -p`; false = plain listing
 summarizer_account = "personal"
 claude_bin = "claude"         # use an absolute path if running from cron
+model = ""                    # model for summaries: "opus", "sonnet", "haiku" or a full id; empty = account default
 ai_timeout_seconds = 180
 
 [chat]
@@ -111,6 +114,7 @@ class Config:
     use_ai: bool = True
     summarizer_account: str | None = None
     claude_bin: str = "claude"
+    summary_model: str = ""  # passed to `claude -p --model`; empty = the account's default
     ai_timeout: int = 180
     chat_account: str | None = None
     watch_downloads: bool = False
@@ -194,6 +198,14 @@ def _match_id(name: str, v: object) -> str | None:
     return v
 
 
+def _model(v: object) -> str:
+    if v is None or v == "":
+        return ""
+    if not isinstance(v, str) or not MODEL_RE.match(v):
+        raise ConfigError('[report] model must be an alias such as "opus" or a model id such as "claude-opus-5-5"')
+    return v
+
+
 def _match_email(name: str, v: object) -> str | None:
     if v is None or v == "":
         return None
@@ -268,6 +280,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         use_ai=bool(rep.get("use_ai", True)),
         summarizer_account=rep.get("summarizer_account") or accounts[0].name,
         claude_bin=str(rep.get("claude_bin", "claude")),
+        summary_model=_model(rep.get("model")),
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
@@ -319,7 +332,8 @@ def dump_config(cfg: Config) -> str:
     out += ["[collect]", f"misc_label = {q(cfg.misc_label)}", f"include_commits = {b(cfg.include_commits)}",
             f"max_prompts_per_session = {cfg.max_prompts}", f"max_prompt_chars = {cfg.max_prompt_chars}", "",
             "[report]", f"use_ai = {b(cfg.use_ai)}", f"summarizer_account = {q(cfg.summarizer_account)}",
-            f"claude_bin = {q(cfg.claude_bin)}", f"ai_timeout_seconds = {cfg.ai_timeout}", "",
+            f"claude_bin = {q(cfg.claude_bin)}", f"model = {q(cfg.summary_model)}",
+            f"ai_timeout_seconds = {cfg.ai_timeout}", "",
             "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
             f"keep_summaries = {b(cfg.keep_chat_summaries)}", ""]

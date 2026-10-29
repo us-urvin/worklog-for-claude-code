@@ -46,6 +46,16 @@ def installed_events(account: Account) -> set[str]:
         return set()
 
 
+def default_model(account: Account) -> str | None:
+    """The `model` the account's settings.json pins (what `/model` saves), or None for the plan's default."""
+    try:
+        settings = json.loads((account.config_dir / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    model = settings.get("model") if isinstance(settings, dict) else None
+    return model.strip()[:100] if isinstance(model, str) and model.strip() else None
+
+
 def hook_installed(account: Account) -> bool:
     return installed_events(account) >= set(HOOK_EVENTS)
 

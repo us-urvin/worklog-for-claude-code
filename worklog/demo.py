@@ -23,7 +23,7 @@ from .report import project_key
 from .services import DEMO_ENV
 
 DEVICES = ("laptop", "desktop")  # the demo runs as "laptop"; "desktop" plays another synced machine
-MODELS = ("claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 
 # name, host, slug (None = outside any git repo), account, weight, prompts, files, commits, summary bullets
 PROJECTS = [
@@ -125,10 +125,15 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
     minutes = rng.randint(12, 150)
     end = start + timedelta(minutes=minutes)
     model = rng.choices(MODELS, weights=(6, 2, 2))[0]
-    scale = {"claude-opus-5-5": 1.4, "claude-haiku-4-5": 0.6}.get(model, 1.0)
+    scale = {"claude-opus-5-5": 1.4, "claude-haiku-5-5": 0.6}.get(model, 1.0)
     tokens = {"input": int(rng.randint(2_000, 30_000) * scale), "output": int(rng.randint(8_000, 90_000) * scale),
               "cache_creation": int(rng.randint(40_000, 300_000) * scale),
               "cache_read": int(rng.randint(400_000, 4_000_000) * scale)}
+    by_model, sub = {model: tokens}, {}
+    if model != "claude-haiku-5-5":  # like real sessions, a fifth of the work runs in Haiku sub-agents
+        helper = {k: v // 5 for k, v in tokens.items()}
+        by_model = {model: {k: v - helper[k] for k, v in tokens.items()}, "claude-haiku-5-5": helper}
+        sub = {"claude-haiku-5-5": helper}
     prompts = rng.sample(proj["prompts"], k=min(len(proj["prompts"]), rng.randint(1, 3)))
     files = sorted(rng.sample(proj["files"], k=min(len(proj["files"]), rng.randint(1, 3))))
     commits = [{"hash": f"{rng.getrandbits(28):07x}", "subject": s}
@@ -145,7 +150,7 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
         "account": proj["account"], "device": device, "project": project,
         "start": start.isoformat(timespec="seconds"), "end": end.isoformat(timespec="seconds"),
         "span_minutes": minutes, "api_calls": rng.randint(8, 120), "tokens": tokens,
-        "tokens_by_model": {model: tokens}, "prompt_count": len(prompts), "prompts": prompts,
+        "tokens_by_model": by_model, "subagent_tokens_by_model": sub, "prompt_count": len(prompts), "prompts": prompts,
         "files_touched": files, "tool_calls": {"Read": rng.randint(3, 40), "Edit": rng.randint(1, 20),
                                                "Bash": rng.randint(0, 15)},
         "commits": commits if proj["slug"] else [],

@@ -47,6 +47,7 @@ class SessionDay:
     branches: set[str] = field(default_factory=set)
     tokens: dict[str, int] = field(default_factory=zero_tokens)
     tokens_by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    subagent_tokens_by_model: dict[str, dict[str, int]] = field(default_factory=dict)  # part of tokens_by_model
     api_calls: int = 0
     prompts: list[str] = field(default_factory=list)
     files: set[str] = field(default_factory=set)
@@ -56,13 +57,16 @@ class SessionDay:
         self.first = ts if self.first is None or ts < self.first else self.first
         self.last = ts if self.last is None or ts > self.last else self.last
 
-    def add_usage(self, model: str, usage: dict) -> None:
+    def add_usage(self, model: str, usage: dict, subagent: bool = False) -> None:
         per_model = self.tokens_by_model.setdefault(model, zero_tokens())
+        sub = self.subagent_tokens_by_model.setdefault(model, zero_tokens()) if subagent else None
         for src, dst in _USAGE_FIELDS.items():
             v = usage.get(src)
             if isinstance(v, int) and not isinstance(v, bool) and v > 0:
                 self.tokens[dst] += v
                 per_model[dst] += v
+                if sub is not None:
+                    sub[dst] += v
         self.api_calls += 1
 
 
@@ -177,4 +181,4 @@ def parse_transcript(
                 if key[0] is None or key not in seen_usage:
                     if key[0] is not None:
                         seen_usage.add(key)
-                    sd.add_usage(model, usage)
+                    sd.add_usage(model, usage, subagent=entry.get("isSidechain") is True)

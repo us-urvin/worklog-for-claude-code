@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -22,6 +23,34 @@ def project_key(proj: dict) -> str:
     """Same repo on two machines (different paths) merges via its remote slug."""
     remote = proj.get("remote")
     return f"{remote['host']}/{remote['slug']}" if remote else f"{proj.get('kind')}:{proj.get('name')}"
+
+
+_MODEL_RE = re.compile(r"^claude-(?:(?P<a>opus|sonnet|haiku|fable)-(?P<v1>\d+(?:-\d)?)"
+                       r"|(?P<v2>\d+(?:-\d)?)-(?P<b>opus|sonnet|haiku|fable))"
+                       r"(?:-\d{8})?(?P<ctx>\[1m\])?$")
+
+
+def model_label(model: str) -> str:
+    """claude-opus-5-5 -> "Opus 5.5", claude-3-5-haiku-20241022 -> "Haiku 3.5". Unknown ids are kept as they are."""
+    m = _MODEL_RE.match(model or "")
+    if not m:
+        return model
+    family = (m["a"] or m["b"]).capitalize()
+    version = (m["v1"] or m["v2"]).replace("-", ".")
+    return f"{family} {version}" + (" (1M)" if m["ctx"] else "")
+
+
+def model_rows(accounts: dict[str, dict]) -> list[dict]:
+    """By-model rows per account, biggest first, with each model's share of that account's tokens."""
+    rows = []
+    for name, a in sorted(accounts.items()):
+        totals = {m: sum(t.values()) for m, t in a["models"].items()}
+        whole = sum(totals.values()) or 1
+        for m, total in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0])):
+            sub = sum((a["models_sub"].get(m) or {}).values())
+            rows.append({"account": name, "model": m, "label": model_label(m), "total": total, "sub": sub,
+                         "share": round(100 * total / whole)})
+    return rows
 
 
 @dataclass
@@ -75,7 +104,7 @@ def aggregate(records: list[dict]):
     projects: dict[str, ProjectDay] = {}
     for r in _dedupe_chats(records):
         acct = accounts.setdefault(r.get("account", "?"), {
-            "tokens": zero_tokens(), "sessions": 0, "chats": 0, "devices": set(), "models": {}})
+            "tokens": zero_tokens(), "sessions": 0, "chats": 0, "devices": set(), "models": {}, "models_sub": {}})
         _add(acct["tokens"], r.get("tokens"))
         if is_chat(r):
             acct["chats"] += 1
@@ -84,6 +113,8 @@ def aggregate(records: list[dict]):
         acct["devices"].add(r.get("device", "?"))
         for model, t in (r.get("tokens_by_model") or {}).items():
             _add(acct["models"].setdefault(model, zero_tokens()), t)
+        for model, t in (r.get("subagent_tokens_by_model") or {}).items():  # records from 0.3.0 on
+            _add(acct["models_sub"].setdefault(model, zero_tokens()), t)
 
         proj = r.get("project") or {}
         key = project_key(proj)
@@ -153,7 +184,10 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
     )
     SUMMARIZER_CWD.mkdir(parents=True, exist_ok=True)  # excluded by the collector
     try:
-        out = subprocess.run([exe, "-p", prompt, "--output-format", "text"], cwd=SUMMARIZER_CWD,
+        cmd = [exe, "-p", prompt, "--output-format", "text"]
+        if cfg.summary_model:  # the background service doesn't see shell aliases or ANTHROPIC_MODEL
+            cmd += ["--model", cfg.summary_model]
+        out = subprocess.run(cmd, cwd=SUMMARIZER_CWD,
                              env=_claude_env(cfg), capture_output=True, text=True, timeout=cfg.ai_timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("claude -p failed for %s: %s", p.name, exc)
@@ -227,12 +261,13 @@ def render(day: date, cfg: Config, accounts: dict, projects: dict[str, ProjectDa
         out.append(f"| **All** | **{total_sessions}** | **{_n(grand['input'])}** | **{_n(grand['output'])}** | "
                    f"**{_n(grand['cache_creation'])}** | **{_n(grand['cache_read'])}** | "
                    f"**{_n(sum(grand.values()))}** |")
-        out += ["", "### By model", "", "| Account | Model | Input | Output | Cache write | Cache read |",
-                "|---|---|---:|---:|---:|---:|"]
-        for name in sorted(accounts):
-            for model, t in sorted(accounts[name]["models"].items()):
-                out.append(f"| {name} | {model} | {_n(t['input'])} | {_n(t['output'])} | "
-                           f"{_n(t['cache_creation'])} | {_n(t['cache_read'])} |")
+        out += ["", "### By model", "",
+                "| Account | Model | Share | Input | Output | Cache write | Cache read | Sub-agents |",
+                "|---|---|---:|---:|---:|---:|---:|---:|"]
+        for row in model_rows(accounts):
+            t = accounts[row["account"]]["models"][row["model"]]
+            out.append(f"| {row['account']} | {row['label']} | {row['share']}% | {_n(t['input'])} | "
+                       f"{_n(t['output'])} | {_n(t['cache_creation'])} | {_n(t['cache_read'])} | {_n(row['sub'])} |")
         out += ["", "> Token counts are usage as logged by Claude Code, not a bill. "
                 "On Pro/Max plans they count against limits rather than cost money directly.", ""]
 

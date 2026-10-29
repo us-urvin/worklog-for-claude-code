@@ -297,3 +297,104 @@ def test_detected_accounts_panel_masks_and_names(home, repo, monkeypatch):
                  {"ref": ref, "dir": "~/.claude", "name": "bad name!"}):
         n = len(saved)
         assert app._account_name(cfg, form)[1] and len(saved) == n
+
+
+# ------------------------------------------------------------------ 0.3.0: summary model, re-filing history
+def _wait_for_job(app, timeout=10.0):
+    import time
+    deadline = time.monotonic() + timeout
+    while app.jobs.snapshot().get("running"):
+        assert time.monotonic() < deadline, "background job did not finish"
+        time.sleep(0.05)
+    return app.jobs.snapshot()
+
+
+def test_naming_a_login_refiles_older_days_too(home, repo, monkeypatch):
+    """Naming a login must fix every day Claude Code still has, not just the last two."""
+    cfg = make_cfg(home, repo)
+    old = (datetime.now().astimezone() - timedelta(days=5)).replace(hour=12, minute=0, second=0, microsecond=0)
+    d = old.date().isoformat()
+    login(home, UID_B, EMAIL_B)
+    start_session(home, "s-old")
+    transcript(home, "s-old", old, home)
+    collector.collect(cfg, [old.date()])
+    assert f"records/{d}/dev1/personal/s-old.json" in records(repo)  # unnamed login -> folder default
+
+    from worklog.config import save_config
+    monkeypatch.setattr(web, "save_config", lambda c: save_config(c, c.path))
+    monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
+    app = web.App(8765)
+    loc, err, _ = app.post("/accounts/name", {"ref": identity.ref(UID_B), "dir": "~/.claude", "name": "work"})
+    assert err is None and loc.startswith("/settings")
+    state = _wait_for_job(app)
+    assert state["ok"], state["message"]
+    recs = records(repo)
+    assert f"records/{d}/dev1/work/s-old.json" in recs
+    assert f"records/{d}/dev1/personal/s-old.json" not in recs
+
+
+def test_summary_uses_the_configured_model(home, repo, monkeypatch):
+    from worklog import report
+    cfg = make_cfg(home, repo)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "- did a thing\n", "")
+    monkeypatch.setattr(report.shutil, "which", lambda _: "/usr/bin/claude")
+    monkeypatch.setattr(report.subprocess, "run", fake_run)
+    p = report.ProjectDay("k", "proj", "git", None)
+    p.prompts.append(("09:00", "fix the bug"))
+
+    assert report.ai_summary(p, datetime.now().date(), cfg) == ["- did a thing"]
+    assert "--model" not in calls[-1]  # default: the account's own default model
+
+    cfg.summary_model = "opus"
+    report.ai_summary(p, datetime.now().date(), cfg)
+    i = calls[-1].index("--model")
+    assert calls[-1][i + 1] == "opus"
+
+
+def test_summary_model_config_roundtrip_and_validation(home, repo):
+    cfg = make_cfg(home, repo)
+    assert cfg.summary_model == ""
+    cfg.summary_model = "claude-opus-5-5"
+    cfg.path.write_text(dump_config(cfg))
+    assert load_config(cfg.path).summary_model == "claude-opus-5-5"
+    for bad in ("--dangerously-skip-permissions", "opus 5", "a" * 101, "op;us"):
+        cfg.path.write_text(dump_config(cfg).replace('"claude-opus-5-5"', json.dumps(bad)))
+        with pytest.raises(ConfigError):
+            load_config(cfg.path)
+
+
+def test_settings_form_saves_summary_model(home, repo, monkeypatch):
+    cfg = make_cfg(home, repo)
+    saved = []
+    monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
+    monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
+    app = web.App(8765)
+    base = {"summarizer": "personal", "claude_bin": "claude", "use_ai": "1"}
+    assert app.post("/settings/report", {**base, "model": "opus"})[1] is None
+    assert saved[-1].summary_model == "opus"
+    assert app.post("/settings/report", {**base, "model": "custom", "model_custom": "claude-opus-5-5"})[1] is None
+    assert saved[-1].summary_model == "claude-opus-5-5"
+    assert app.post("/settings/report", {**base, "model": ""})[1] is None
+    assert saved[-1].summary_model == ""
+    n = len(saved)
+    assert app.post("/settings/report", {**base, "model": "custom", "model_custom": "--evil"})[1]
+    assert len(saved) == n
+
+
+def test_doctor_shows_default_and_summary_models(home, repo, capsys, monkeypatch):
+    cfg = make_cfg(home, repo)
+    cfg.use_ai, cfg.summary_model = True, "opus"
+    cfg.path.write_text(dump_config(cfg))
+    monkeypatch.setattr(cli, "load_config", lambda: load_config(cfg.path))
+    (home / ".claude" / "settings.json").write_text(json.dumps({"model": "claude-sonnet-5-5"}))
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "default model: Sonnet 5.5 (claude-sonnet-5-5)" in out
+    assert "summaries are written with: opus" in out
+    (home / ".claude" / "settings.json").write_text("{}")
+    cli.main(["doctor"])
+    assert "default model: not set: the plan default" in capsys.readouterr().out

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config
-from .hooks import HOOK_EVENTS, install_hook, installed_events
+from .hooks import HOOK_EVENTS, default_model, install_hook, installed_events
 
 log = logging.getLogger("worklog")
 
@@ -73,6 +73,7 @@ def cmd_doctor(args) -> int:
         ok = False
         print(f"✗ store repo: {cfg.store_repo} is not a git clone")
     from .identity import detected_logins, mask_email
+    from .report import model_label
 
     for a in cfg.accounts:
         proj = a.config_dir / "projects"
@@ -85,6 +86,9 @@ def cmd_doctor(args) -> int:
         role = (" [matched login]" if a.matched else
                 " [default for shared folder]" if len(cfg.accounts_by_dir()[a.config_dir]) > 1 else "")
         print(f"{mark} account {a.name}{role}: {a.config_dir} ({n} transcripts, {hooks})")
+        pinned = default_model(a)
+        shown = f"{model_label(pinned)} ({pinned})" if pinned else "not set: the plan default"
+        print(f"  default model: {shown}")
     for login in detected_logins():  # e-mails masked: doctor output gets pasted into issues
         for d in login["dirs"]:
             if d in cfg.accounts_by_dir():
@@ -93,6 +97,9 @@ def cmd_doctor(args) -> int:
     exe = shutil.which(cfg.claude_bin)
     missing = cfg.claude_bin + " not found (AI summaries will fall back to plain)"
     print(f"{'✓' if exe else '!'} claude binary: {exe or missing}")
+    if cfg.use_ai:
+        model = cfg.summary_model or "the default model of account " + str(cfg.summarizer_account)
+        print(f"  summaries are written with: {model}")
     return 0 if ok else 1
 
 

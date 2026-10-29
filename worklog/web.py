@@ -29,6 +29,7 @@ from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
     CONFIG_PATH,
+    MODEL_RE,
     Account,
     Config,
     ConfigError,
@@ -42,16 +43,19 @@ from .config import (
 )
 from .hooks import hook_installed, install_hook
 from .identity import detected_logins, mask_email
-from .report import aggregate, build_report, load_saved_summaries, plain_summary
+from .report import aggregate, build_report, load_saved_summaries, model_rows, plain_summary
 from .store import GitStore
 
 log = logging.getLogger(__name__)
 DEFAULT_PORT = 8765
+# HTML pattern for names. "-" is escaped: browsers compile patterns with the v flag, where a bare "-" fails.
+NAME_PATTERN = r"[A-Za-z0-9_\-]{1,40}"
+REFILE_DAYS = 30  # Claude Code's default transcript retention
 HOST_NAME = "worklog.localhost"  # *.localhost resolves to loopback in browsers and systemd-resolved
 MAX_BODY = 64 * 1024
 MAX_UPLOAD = 200 * 1024 * 1024  # claude.ai conversations export (zip or json)
 EXPORT_SETTINGS_URL = "https://claude.ai/settings/data-privacy-controls"
-COLORS = ["#2F5BEA", "#0F9D8A", "#C98A12", "#8A4FBF", "#C4456A", "#3E8E3E"]
+COLORS = ["#8B7CFF", "#22D3EE", "#F472B6", "#FBBF24", "#34D399", "#FB923C"]  # readable on dark and light glass
 
 
 def e(v: object) -> str:
@@ -63,7 +67,7 @@ OK_MESSAGES = {
     "account_added": "Account added. Log in to it once in a terminal (command below), then install its hook.",
     "account_removed": "Account removed from this device. Its records already synced are kept.",
     "saved": "Settings saved.",
-    "named": "Login named. Its sessions are counted under that account from the next sync.",
+    "named": "Login named. Its sessions from the last 30 days are being moved to that account now.",
     "job": "Started. This page updates when it finishes.",
     "chat_saved": "Chat import settings saved.",
 }
@@ -157,58 +161,118 @@ def _git_out(repo: Path, *args: str) -> str:
 
 # ================================================================== layout
 CSS = """
-:root{--paper:#EEF1F4;--sheet:#fff;--ink:#1B2A41;--muted:#5B6B82;--rule:#D3DAE3;--accent:#2F5BEA;--ok:#0F7B5F;--bad:#B3261E;
-font-family:"Ubuntu","Noto Sans","DejaVu Sans",system-ui,sans-serif;color:var(--ink);background:var(--paper);
-font-variant-numeric:tabular-nums;line-height:1.5}
-@media (prefers-color-scheme:dark){:root{--paper:#121822;--sheet:#1A2230;--ink:#DCE3ED;--muted:#93A1B5;--rule:#2A3444;--accent:#7B9BFF;--ok:#4CC9A0;--bad:#FF8A80}}
-*{box-sizing:border-box}body{margin:0}a{color:var(--accent)}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px 64px}
-header{display:flex;align-items:center;gap:20px;padding:18px 0;border-bottom:1px solid var(--rule);margin-bottom:28px}
-.brand{font-weight:700;font-size:1.05rem;color:var(--ink);text-decoration:none;margin-right:auto}
-nav{display:flex;gap:22px}nav a{color:var(--muted);text-decoration:none;padding:4px 2px}nav a[aria-current]{color:var(--ink);border-bottom:2px solid var(--accent)}
-h1{font-size:clamp(2rem,5vw,3.1rem);line-height:1.05;margin:0;font-weight:700;letter-spacing:-.02em}
-h1 small{display:block;font-size:.4em;font-weight:400;color:var(--muted);letter-spacing:0;margin-top:6px}
-h2{font-size:1.15rem;margin:0 0 12px}h3{font-size:1.1rem;margin:0}
+:root{color-scheme:dark;--bg:#070B1A;--ink:#EEF2FF;--muted:#A3AECB;--rule:rgba(255,255,255,.11);--glass:rgba(22,28,56,.55);
+--glass-hi:rgba(255,255,255,.07);--field:rgba(8,12,30,.55);--accent:#9D8CFF;--accent-2:#38D9F5;--accent-3:#F57BC3;
+--ok:#4ADE9B;--bad:#FF8A9A;--on-accent:#0B0F24;--shadow:0 18px 50px rgba(0,0,0,.45);--glow:0 0 0 1px rgba(157,140,255,.35),0 8px 30px rgba(120,100,255,.25);
+--aurora-1:rgba(124,92,255,.62);--aurora-2:rgba(34,211,238,.45);--aurora-3:rgba(244,114,182,.38);
+font-family:"Inter","Ubuntu","Noto Sans","DejaVu Sans",system-ui,sans-serif;color:var(--ink);background:var(--bg);
+font-variant-numeric:tabular-nums;line-height:1.55;-webkit-font-smoothing:antialiased}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#F4F6FF;--ink:#141936;--muted:#525C7A;--rule:rgba(20,25,54,.12);
+--glass:rgba(255,255,255,.62);--glass-hi:rgba(255,255,255,.75);--field:rgba(255,255,255,.85);--accent:#5B45F0;--accent-2:#0A7393;--accent-3:#C42A86;
+--ok:#047857;--bad:#BE123C;--on-accent:#fff;--shadow:0 14px 40px rgba(60,60,140,.14);--glow:0 0 0 1px rgba(91,69,240,.3),0 8px 26px rgba(91,69,240,.18);
+--aurora-1:rgba(140,110,255,.40);--aurora-2:rgba(56,217,245,.32);--aurora-3:rgba(245,123,195,.28)}}
+*{box-sizing:border-box}[hidden]{display:none!important}html{background:var(--bg)}body{margin:0;min-height:100vh;position:relative;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:-20vmax;z-index:-1;pointer-events:none;filter:blur(60px);
+background:radial-gradient(38vmax 30vmax at 12% 8%,var(--aurora-1),transparent 70%),
+radial-gradient(34vmax 28vmax at 88% 18%,var(--aurora-2),transparent 70%),
+radial-gradient(40vmax 30vmax at 60% 100%,var(--aurora-3),transparent 70%)}
+@media (prefers-reduced-motion:no-preference){body::before{animation:drift 26s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(3vmax,-2vmax,0) rotate(6deg)}}}
+a{color:var(--accent);text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent-2);outline-offset:3px;border-radius:6px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px 56px}
+header{position:sticky;top:12px;z-index:5;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 12px 10px 16px;margin:12px 0 30px;
+background:var(--glass);border:1px solid var(--rule);border-radius:18px;backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);box-shadow:var(--shadow)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem;color:var(--ink);text-decoration:none;margin-right:auto;letter-spacing:-.01em}
+.brand svg{width:28px;height:28px;flex:none}
+nav{display:flex;gap:4px;background:var(--glass-hi);border:1px solid var(--rule);border-radius:999px;padding:4px}
+nav a{color:var(--muted);text-decoration:none;padding:6px 14px;border-radius:999px;font-weight:600;font-size:.92rem}
+nav a:hover{color:var(--ink)}
+nav a[aria-current]{color:var(--on-accent);background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:var(--glow)}
+h1{font-size:clamp(2rem,5.2vw,3.3rem);line-height:1.04;margin:0;font-weight:800;letter-spacing:-.03em}
+h1 small{display:block;font-size:.36em;font-weight:500;color:var(--muted);letter-spacing:0;margin-top:8px}
+.grad{background:linear-gradient(120deg,var(--ink) 20%,var(--accent) 60%,var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:1.12rem;margin:0 0 12px;letter-spacing:-.01em}h3{font-size:1.08rem;margin:0;letter-spacing:-.01em}
 .daynav{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}.daynav .arrows{display:flex;gap:6px;margin-left:auto}
-.lede{font-size:1.15rem;max-width:62ch;margin:14px 0 22px;color:var(--ink)}
-.strip{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:14px 14px 6px;margin-bottom:30px}
-.strip svg{width:100%;height:auto;display:block}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin:4px 2px 6px}
-.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-.cols{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:36px;align-items:start}
-@media (max-width:860px){.cols{grid-template-columns:1fr}}
-.entry{padding:20px 0;border-top:1px solid var(--rule)}.entry:first-of-type{border-top:0;padding-top:4px}
-.entry .where{color:var(--muted);font-size:.9rem;margin:2px 0 10px}.entry ul{margin:8px 0 12px;padding-left:1.1em;max-width:70ch}
-.entry li{margin:3px 0}.src{font-size:.8rem;color:var(--muted)}
-dl.facts{display:flex;flex-wrap:wrap;gap:4px 22px;margin:8px 0 0;font-size:.88rem}dl.facts div{display:flex;gap:6px}
-dl.facts dt{color:var(--muted)}dl.facts dd{margin:0}
-details{margin-top:8px;font-size:.9rem}summary{cursor:pointer;color:var(--muted)}details ul{margin:6px 0}
-aside .panel{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:16px;margin-bottom:18px}
-table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--rule)}
-td{white-space:nowrap}th{vertical-align:bottom;line-height:1.2}th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500}tr:last-child td{border-bottom:0}
+.lede{font-size:1.05rem;max-width:66ch;margin:14px 0 20px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0 22px}
+@media (max-width:760px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{padding:16px 18px;position:relative;overflow:hidden}
+.tile .k{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.tile .v{font-size:clamp(1.5rem,3.4vw,2.1rem);font-weight:800;letter-spacing:-.02em;margin-top:4px;line-height:1.1}
+.tile::after{content:"";position:absolute;right:-30px;top:-30px;width:90px;height:90px;border-radius:50%;
+background:radial-gradient(circle,var(--tile-glow,var(--accent)) 0,transparent 70%);opacity:.35}
+.tile:nth-child(2){--tile-glow:var(--accent-2)}.tile:nth-child(3){--tile-glow:var(--accent-3)}.tile:nth-child(4){--tile-glow:var(--ok)}
+.glass,.strip,aside .panel,section.block,.entry,.tile{background:var(--glass);border:1px solid var(--rule);border-radius:18px;
+backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);box-shadow:var(--shadow)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){:root{--glass:rgba(22,28,56,.96)}
+@media (prefers-color-scheme:light){:root{--glass:rgba(255,255,255,.97)}}}
+.strip{padding:16px 16px 8px;margin-bottom:18px}
+.strip svg{width:100%;height:auto;display:block}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin:2px 2px 8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start;margin-top:26px}
+@media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
+main>h2{margin-left:4px}
+.entry{padding:20px 22px;margin-bottom:14px;transition:border-color .2s,transform .2s}
+.entry:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--rule))}
+.entry .where{color:var(--muted);font-size:.88rem;margin:3px 0 10px;overflow-wrap:anywhere}
+.entry ul{margin:8px 0 12px;padding-left:1.15em;max-width:72ch}.entry li{margin:4px 0}.entry li::marker{color:var(--accent)}
+.src{font-size:.78rem;color:var(--muted);display:inline-block;padding:2px 10px;border:1px solid var(--rule);border-radius:999px;background:var(--glass-hi)}
+dl.facts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;font-size:.86rem}dl.facts div{display:flex;gap:6px}
+dl.facts dt{color:var(--muted)}dl.facts dd{margin:0;font-weight:600}
+details{margin-top:10px;font-size:.9rem}summary{cursor:pointer;color:var(--muted);font-weight:600}summary:hover{color:var(--ink)}details ul{margin:6px 0}
+aside .panel{padding:18px 16px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:.84rem}th,td{padding:7px 3px;text-align:right;border-bottom:1px solid var(--rule)}
+td{white-space:nowrap}th{vertical-align:bottom;line-height:1.2}th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}tr:last-child td{border-bottom:0}
 .tablewrap{overflow-x:auto}
-button,.btn{font:inherit;font-size:.9rem;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:7px;padding:7px 14px;cursor:pointer;text-decoration:none;display:inline-block}
-button.quiet,.btn.quiet{background:transparent;color:var(--accent)}button.danger{background:transparent;border-color:var(--bad);color:var(--bad)}
-button:disabled{opacity:.55;cursor:progress}
-.banner{border-radius:8px;padding:10px 14px;margin-bottom:22px;border:1px solid var(--rule);background:var(--sheet)}
-.banner.ok{border-color:var(--ok)}.banner.bad{border-color:var(--bad);color:var(--bad)}
-section.block{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:20px;margin-bottom:22px}
-section.block p.help{color:var(--muted);margin:0 0 14px;max-width:70ch}
-label{display:block;font-size:.9rem;margin:12px 0 4px}input[type=text],input[type=date],select{font:inherit;width:100%;max-width:420px;padding:7px 9px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink)}
-.check{display:flex;gap:8px;align-items:center;margin:12px 0}.check label{margin:0}
+.models{list-style:none;margin:0;padding:0}.models li{padding:9px 0;border-bottom:1px solid var(--rule)}.models li:last-child{border-bottom:0}
+.models .top{display:flex;gap:8px;align-items:baseline}.models .name{font-weight:700}.models .who{color:var(--muted);font-size:.8rem}
+.models .num{margin-left:auto;font-weight:700}.models .bar{height:6px;border-radius:99px;background:var(--glass-hi);margin:6px 0 4px;overflow:hidden}
+.models .bar span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.models .sub{font-size:.78rem;color:var(--muted)}
+button,.btn{font:inherit;font-size:.9rem;font-weight:700;border:0;color:var(--on-accent);border-radius:12px;padding:9px 16px;cursor:pointer;text-decoration:none;
+display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:var(--glow);transition:transform .15s,filter .15s}
+button:hover,.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+button.quiet,.btn.quiet{background:var(--glass-hi);color:var(--ink);box-shadow:none;border:1px solid var(--rule)}
+button.quiet:hover,.btn.quiet:hover{border-color:var(--accent)}
+button.danger{background:transparent;border:1px solid var(--bad);color:var(--bad);box-shadow:none}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;filter:none}
+.banner{border-radius:14px;padding:12px 16px;margin-bottom:20px;border:1px solid var(--rule);background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.banner.ok{border-color:var(--ok);box-shadow:0 0 24px color-mix(in srgb,var(--ok) 25%,transparent)}.banner.bad{border-color:var(--bad);color:var(--bad)}
+section.block{padding:22px 24px;margin-bottom:20px}
+section.block p.help{color:var(--muted);margin:0 0 14px;max-width:72ch}
+label{display:block;font-size:.88rem;font-weight:600;margin:14px 0 6px}
+input[type=text],input[type=date],select{font:inherit;width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--rule);border-radius:12px;background:var(--field);color:var(--ink)}
+input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
+input[type=file]{font:inherit;color:var(--muted);max-width:100%}
+input[type=file]::file-selector-button{font:inherit;font-weight:700;border:1px solid var(--rule);border-radius:10px;padding:7px 12px;margin-right:10px;background:var(--glass-hi);color:var(--ink);cursor:pointer}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);flex:none;margin:2px 0 0}
+.check{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.check label{margin:0;font-weight:500}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
-code,.cmd{font-family:"Ubuntu Mono","DejaVu Sans Mono",monospace;font-size:.9em}
-.cmd{display:block;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto;white-space:pre}
-.state-ok{color:var(--ok)}.state-bad{color:var(--bad)}.muted{color:var(--muted)}
-.empty{padding:28px;border:1px dashed var(--rule);border-radius:10px;text-align:center;color:var(--muted)}
+code,.cmd{font-family:"JetBrains Mono","Ubuntu Mono","DejaVu Sans Mono",monospace;font-size:.88em}
+code{background:var(--glass-hi);border:1px solid var(--rule);border-radius:6px;padding:1px 6px}
+.cmd{display:block;background:var(--field);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;margin:6px 0;overflow-x:auto;white-space:pre}
+.state-ok{color:var(--ok);font-weight:700}.state-bad{color:var(--bad);font-weight:700}.muted{color:var(--muted)}
+.pill{display:inline-block;font-size:.78rem;font-weight:700;padding:2px 10px;border-radius:999px;border:1px solid var(--rule);background:var(--glass-hi)}
+.pill.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}.pill.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.empty{padding:30px;border:1px dashed var(--rule);border-radius:18px;text-align:center;color:var(--muted);background:var(--glass)}
 ul.chats{list-style:none;padding-left:0}ul.chats>li{margin:10px 0}ul.msgs{margin:2px 0 0;color:var(--muted);font-size:.92rem}
-.chatsum{color:var(--muted);font-size:.92rem;max-width:70ch;margin-top:2px}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
-footer a{color:var(--muted)}
-@media (prefers-reduced-motion:no-preference){.bar{transition:opacity .15s}a:hover .bar{opacity:.8}}
+.chatsum{color:var(--muted);font-size:.92rem;max-width:72ch;margin-top:2px}
+.acct{padding:16px 0;border-top:1px solid var(--rule)}.acct:first-of-type{border-top:0;padding-top:4px}
+.acct .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.setups{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 16px}@media (max-width:700px){.setups{grid-template-columns:1fr}}
+.setups div{border:1px solid var(--rule);border-radius:14px;padding:12px 14px;background:var(--glass-hi);font-size:.9rem}
+.setups b{display:block;margin-bottom:4px}
+footer{margin-top:44px;padding:16px 4px 0;border-top:1px solid var(--rule);font-size:.85rem;color:var(--muted)}
+footer a{color:var(--muted)}footer a:hover{color:var(--ink)}
+@media (max-width:560px){.opt{display:none}header{top:8px;padding:8px}nav a{padding:6px 10px}.brand span{display:none}section.block{padding:18px}.entry{padding:18px}}
+@media (prefers-reduced-motion:no-preference){svg .bar{transition:opacity .15s}a:hover .bar{opacity:.8}}
 """
 
 SCRIPT = """
+(function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
+function sync(){t.hidden=s.value!=='custom'}s.addEventListener('change',function(){sync();if(!t.hidden)t.focus()});sync()})();
 (function(){var b=document.getElementById('jobstate');if(!b||b.dataset.running!=='1')return;
 function poll(){fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
 if(!s.running){location.reload()}else{setTimeout(poll,2000)}}).catch(function(){setTimeout(poll,4000)})}
@@ -233,6 +297,13 @@ FOOTER = (f'<footer>Worklog for Claude Code {e(__version__)} · '
           f'<a href="{_REPO}/issues/new/choose" target="_blank" rel="noopener noreferrer">Report a bug</a></footer>')
 
 
+LOGO = ('<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0" stop-color="#9D8CFF"/><stop offset=".55" stop-color="#38D9F5"/><stop offset="1" stop-color="#F57BC3"/>'
+        '</linearGradient></defs><rect width="32" height="32" rx="9" fill="url(#lg)"/>'
+        '<rect x="7" y="17" width="4" height="8" rx="2" fill="#0B0F24"/><rect x="14" y="11" width="4" height="14" rx="2" fill="#0B0F24"/>'
+        '<rect x="21" y="7" width="4" height="18" rx="2" fill="#0B0F24"/></svg>')
+
+
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None) -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
@@ -250,7 +321,7 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} – Worklog</title>
 <style>{CSS}</style></head><body><div class="wrap">
-<header><a class="brand" href="/">Worklog</a><nav>{nav}</nav></header>{banners}{body}{FOOTER}</div>
+<header><a class="brand" href="/">{LOGO}<span>Worklog</span></a><nav aria-label="Main">{nav}</nav></header>{banners}{body}{FOOTER}</div>
 <script nonce="{nonce}">{SCRIPT}</script></body></html>"""
 
 
@@ -274,7 +345,7 @@ def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], sele
                 continue
             bh = (h - top - bottom) * v / peak
             y -= bh
-            rects.append(f'<rect class="bar" x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="2" '
+            rects.append(f'<rect class="bar" x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" rx="3" '
                          f'fill="{COLORS[accounts.index(name) % len(COLORS)]}"/>')
         if not rects:
             rects.append(f'<rect x="{x:.1f}" y="{h - bottom - 2}" width="{bw:.1f}" height="2" fill="var(--rule)"/>')
@@ -282,12 +353,12 @@ def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], sele
         label_weight = "700" if is_sel else "400"
         label_fill = "var(--ink)" if is_sel else "var(--muted)"
         mark = (f'<rect x="{x - 3:.1f}" y="{top - 4}" width="{bw + 6:.1f}" height="{h - bottom - top + 6}" rx="4" '
-                f'fill="none" stroke="var(--accent)" stroke-width="1.5"/>') if is_sel else ""
+                f'fill="none" stroke="var(--accent-2)" stroke-width="1.5"/>') if is_sel else ""
         n_chats = chat_counts.get(d, 0)
         tip = (f"{d:%a %d %b}: {_n(total)} tokens" + "".join(f", {k} {_n(v)}" for k, v in per.items() if v)
                + (f", {n_chats} claude.ai chat{'s' * (n_chats != 1)}" if n_chats else ""))
         if n_chats:  # chats have no tokens, so mark the day under its bar
-            rects.append(f'<circle cx="{x + bw / 2:.1f}" cy="{h - bottom + 7}" r="3" fill="var(--accent)"/>')
+            rects.append(f'<circle cx="{x + bw / 2:.1f}" cy="{h - bottom + 7}" r="3" fill="var(--accent-3)"/>')
         parts.append(f'<a href="/?d={d.isoformat()}"><title>{e(tip)}</title>{mark}{"".join(rects)}'
                      f'<rect x="{i * slot:.1f}" y="0" width="{slot:.1f}" height="{h}" fill="transparent"/>'
                      f'<text x="{x + bw / 2:.1f}" y="{h - 6}" text-anchor="middle" font-size="11" '
@@ -295,7 +366,7 @@ def _chart(history: list[tuple[date, dict[str, int]]], accounts: list[str], sele
     legend = "".join(f'<span><i style="background:{COLORS[i % len(COLORS)]}"></i>{e(n)}</span>'
                      for i, n in enumerate(accounts))
     if any(chat_counts.get(d) for d, _ in history):
-        legend += '<span><i style="background:var(--accent);border-radius:50%"></i>claude.ai chats</span>'
+        legend += '<span><i style="background:var(--accent-3);border-radius:50%"></i>claude.ai chats</span>'
     return (f'<div class="strip"><div class="legend">{legend or "<span>No activity yet</span>"}'
             f'<span style="margin-left:auto">Last {len(history)} days, peak {_short(peak) if peak > 1 else 0} tokens</span></div>'
             f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="Tokens per day for the last {len(history)} days">'
@@ -354,7 +425,7 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
     jump = (f'<form method="get" action="/" class="row" style="margin:0"><label for="d" class="muted" style="margin:0">Go to</label>'
             f'<input type="date" id="d" name="d" value="{day.isoformat()}" max="{today.isoformat()}" style="width:auto">'
             f'<button class="quiet">Show</button></form>')
-    head = (f'<div class="daynav"><h1>{day:%A, %d %B}<small>{day.year}'
+    head = (f'<div class="daynav"><h1><span class="grad">{day:%A, %d %B}</span><small>{day.year}'
             f'{", today" if day == today else ""}</small></h1><div class="arrows">{arrows}</div></div>')
 
     busy = " disabled" if app.jobs.snapshot().get("running") else ""
@@ -388,6 +459,11 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
                 f'{", plus " + chat_txt if n_chats else ""}.</p>')
     else:
         lede = f'<p class="lede">{chat_txt}. claude.ai exports have no token counts.</p>'
+    minutes = sum(p.minutes for p in projects.values())
+    tiles = [("Tokens", _short(total) if sessions else "–"), ("Sessions", str(sessions)),
+             ("Projects", str(sum(1 for p in projects.values() if p.sessions or p.chats))), ("Time", _dur(minutes))]
+    lede += ('<div class="tiles">' + "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{e(v)}</div></div>'
+                                             for k, v in tiles) + "</div>")
 
     entries = []
     for p in sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -sum(p.tokens.values()))):
@@ -427,21 +503,24 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         f'<tr><td><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;'
         f'background:{COLORS[names.index(n) % len(COLORS)] if n in names else "var(--muted)"}"></i>{e(n)}</td>'
         f'<td>{_short(a["tokens"]["input"])}</td><td>{_short(a["tokens"]["output"])}</td>'
-        f'<td>{_short(a["tokens"]["cache_creation"])}</td><td>{_short(a["tokens"]["cache_read"])}</td>'
+        f'<td class="opt">{_short(a["tokens"]["cache_creation"])}</td><td class="opt">{_short(a["tokens"]["cache_read"])}</td>'
         f'<td><b>{_short(sum(a["tokens"].values()))}</b></td></tr>' for n, a in sorted(accounts.items())
         if a["sessions"])
-    model_rows = "".join(
-        f'<tr><td>{e(n)}</td><td style="text-align:left">{e(m)}</td><td>{_short(sum(t.values()))}</td></tr>'
-        for n, a in sorted(accounts.items()) for m, t in sorted(a["models"].items()))
+    models_html = "".join(
+        f'<li title="{e(r["model"])}"><div class="top"><span class="name">{e(r["label"])}</span>'
+        f'<span class="who">{e(r["account"])}</span><span class="num">{_short(r["total"])} · {r["share"]}%</span></div>'
+        f'<div class="bar"><span style="width:{max(r["share"], 1)}%"></span></div>'
+        + (f'<div class="sub">{"all" if r["sub"] >= r["total"] else _short(r["sub"])} from sub-agents</div>' if r["sub"] else "")
+        + "</li>" for r in model_rows(accounts))
     aside = (f'<aside><div class="panel"><h2>Tokens by account</h2><div class="tablewrap"><table>'
-             f'<tr><th>Account</th><th>In</th><th>Out</th><th>Cache<br>write</th><th>Cache<br>read</th><th>Total</th></tr>'
-             f'{acct_rows}</table></div></div><div class="panel"><h2>By model</h2><div class="tablewrap"><table>'
-             f'<tr><th>Account</th><th style="text-align:left">Model</th><th>Total</th></tr>{model_rows}</table></div>'
-             f'<p class="muted" style="font-size:.8rem;margin:10px 0 0">Usage as logged by Claude Code, not a bill.</p></div></aside>')
+             f'<tr><th>Account</th><th>In</th><th>Out</th><th class="opt">Cache<br>write</th><th class="opt">Cache<br>read</th><th>Total</th></tr>'
+             f'{acct_rows}</table></div></div><div class="panel"><h2>By model</h2><ul class="models">{models_html}</ul>'
+             f'<p class="muted" style="font-size:.8rem;margin:10px 0 0">The model Claude Code logged for each reply, '
+             f'including sub-agents. Usage, not a bill.</p></div></aside>')
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
     body = (head + lede + _chart(history, names, day, chat_counts) + actions
-            + f'<div class="cols" style="margin-top:26px"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>')
+            + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>')
     return body, None
 
 
@@ -537,15 +616,19 @@ def page_setup(app: App, form: dict | None = None) -> str:
     return f"""<h1>Set up this device<small>One time only. You can change everything later in Settings.</small></h1>
 <form method="post" action="/setup" style="margin-top:24px"><input type="hidden" name="csrf" value="{app.csrf}">
 <section class="block"><h2>This device</h2><p class="help">A short name so the report can tell your machines apart. Use a different name on each device.</p>
-<label for="device">Device name</label><input type="text" id="device" name="device" value="{v('device', default_device)}" required pattern="[A-Za-z0-9_-]{{1,40}}"></section>
+<label for="device">Device name</label><input type="text" id="device" name="device" value="{v('device', default_device)}" required pattern="{NAME_PATTERN}"></section>
 <section class="block"><h2>Data repo</h2><p class="help">A private git repo (GitHub, GitLab or Bitbucket) that every device syncs to. Create it empty on the website first.
 If this device already has a clone, just enter its folder. Otherwise also paste the clone URL and it will be cloned for you. The URL must work without a password prompt (SSH deploy key, see Full setup in docs/GUIDE.md).</p>
 <label for="store">Folder</label><input type="text" id="store" name="store" value="{v('store', '~/claude-worklog-data')}" required>
 <label for="clone">Clone URL (only if the folder doesn't exist yet)</label><input type="text" id="clone" name="clone" value="{v('clone')}" placeholder="git@github.com:you/claude-worklog-data.git"></section>
 <section class="block"><h2>First Claude account</h2><p class="help">The account you use with plain <code>claude</code> lives in <code>~/.claude</code>. You can add more accounts after setup.</p>
-<label for="aname">Account name</label><input type="text" id="aname" name="aname" value="{v('aname', 'personal')}" required pattern="[A-Za-z0-9_-]{{1,40}}">
+<label for="aname">Account name</label><input type="text" id="aname" name="aname" value="{v('aname', 'personal')}" required pattern="{NAME_PATTERN}">
 <label for="adir">Claude config folder</label><input type="text" id="adir" name="adir" value="{v('adir', '~/.claude')}" required></section>
 <button>Save setup</button></form>"""
+
+
+MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)"),
+                 ("haiku", "Haiku (latest)"), ("fable", "Fable (latest)"))
 
 
 def _detected_section(cfg: Config, csrf_field: str) -> str:
@@ -559,26 +642,28 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             current = cfg.resolve_account(d, login["account_id"], login["email"])
             linked = current.match_account_id == login["account_id"] or (
                 current.match_email and login["email"] and current.match_email.casefold() == login["email"].casefold())
-            status = (f'Counted as <b>{e(current.name)}</b>' if linked
-                      else f'Counted as <b>{e(current.name)}</b> <span class="muted">(folder default)</span>')
+            status = (f'<span class="pill ok">Counted as {e(current.name)}</span>' if linked
+                      else f'<span class="pill bad">No name yet</span> <span class="muted">counted as {e(current.name)} '
+                           f'(folder default)</span>')
             names = "".join(f'<option value="{e(a.name)}">' for a in by_dir[d])
             list_id = f"names-{login['ref']}-{len(rows)}"
             seen = login["last_seen"][:16].replace("T", " ")
             rows.append(
-                f'<div class="entry"><h3>{e(mask_email(login["email"]))}</h3>'
-                f'<div class="where"><code>{e(home_relative(d))}</code> · last seen {e(seen)} · {status}</div>'
-                f'<form method="post" action="/accounts/name" class="row" style="margin-top:4px">{csrf_field}'
+                f'<div class="acct"><h3>{e(mask_email(login["email"]))}</h3>'
+                f'<div class="meta">{status}<span class="muted">folder <code>{e(home_relative(d))}</code> · last seen {e(seen)}</span></div>'
+                f'<form method="post" action="/accounts/name" class="row" style="margin-top:8px">{csrf_field}'
                 f'<input type="hidden" name="ref" value="{e(login["ref"])}"><input type="hidden" name="dir" value="{e(home_relative(d))}">'
                 f'<label for="{list_id}-in" class="muted" style="margin:0">Account name</label>'
                 f'<input type="text" id="{list_id}-in" name="name" list="{list_id}" value="{e(current.name) if linked else ""}" '
-                f'required pattern="[A-Za-z0-9_-]{{1,40}}" style="width:auto"><datalist id="{list_id}">{names}</datalist>'
-                f'<button class="quiet">{"Rename" if linked else "Name this account"}</button></form></div>')
+                f'placeholder="work" required pattern="{NAME_PATTERN}" style="width:auto"><datalist id="{list_id}">{names}</datalist>'
+                f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button></form></div>')
     body = "".join(rows) or ('<div class="empty">No logins recorded yet. Install the hook, then start a Claude Code '
                              'session. Each account you log in with appears here.</div>')
-    return (f'<section class="block"><h2>Detected accounts</h2><p class="help">Accounts seen logged in when a session started. '
-            f'If you switch accounts in one folder with <code>/logout</code> and <code>/login</code>, give each one a name so '
-            f'its sessions are counted separately. Sessions from a login without a name go to the folder&#39;s default account. '
-            f'Only the name is written to your data repo; the e-mail and account id stay on this device.</p>{body}</section>')
+    return (f'<h3 style="margin-top:22px">Logins seen on this device</h3><p class="help" style="margin-top:6px">Each account '
+            f'you were logged in with when a session started. A login with <b>No name yet</b> is counted under the '
+            f'folder&#39;s default account: give it a name to count it separately. Naming also moves its sessions from the '
+            f'last {REFILE_DAYS} days. Only the name is written to your data repo; the e-mail and account id stay on this '
+            f'device.</p>{body}')
 
 
 def page_settings(app: App, cfg: Config) -> str:
@@ -592,46 +677,72 @@ def page_settings(app: App, cfg: Config) -> str:
     else:
         store_state = '<span class="state-bad">Not a git clone.</span> Clone your private data repo into this folder.'
 
+    logins = detected_logins()
+    by_dir = cfg.accounts_by_dir()
     rows = []
     for a in cfg.accounts:
         exists = a.config_dir.is_dir()
         n = _transcript_count(a) if exists else 0
         hooked = hook_installed(a)
         env = "" if a.config_dir == Path.home() / ".claude" else f"CLAUDE_CONFIG_DIR={home_relative(a.config_dir)} "
-        login = f'<span class="cmd">{e(env)}claude\n# then type /login and sign in with this account</span>'
-        state = (f'<span class="state-ok">{n} session file{"s" * (n != 1)}</span>' if exists and n
-                 else '<span class="state-bad">Not logged in yet</span>' if not exists else '<span class="muted">No sessions yet</span>')
-        hook_btn = ('<span class="state-ok">Hook installed</span>' if hooked else
+        login_cmd = f'<span class="cmd">{e(env)}claude\n# then type /login and sign in with this account</span>'
+        state = (f'<span class="pill ok">{n} session file{"s" * (n != 1)}</span>' if exists and n
+                 else '<span class="pill bad">Not logged in yet</span>' if not exists else '<span class="pill">No sessions yet</span>')
+        hook_btn = ('<span class="pill ok">Hook installed</span>' if hooked else
                     f'<form method="post" action="/accounts/hook">{c}<input type="hidden" name="name" value="{e(a.name)}">'
-                    f'<button class="quiet">Install hook</button></form>')
+                    f'<button>Install hook</button></form>')
         remove = (f'<form method="post" action="/accounts/remove">{c}<input type="hidden" name="name" value="{e(a.name)}">'
                   f'<button class="danger">Remove</button></form>') if len(cfg.accounts) > 1 else ""
-        rows.append(f'<div class="entry"><h3>{e(a.name)}</h3><div class="where"><code>{e(home_relative(a.config_dir))}</code></div>'
-                    f'<div class="row" style="margin-top:4px">{state}{hook_btn}{remove}</div>'
-                    f'{"" if exists and n else "<details open><summary>How to log in</summary>" + login + "</details>"}</div>')
+        mine = sorted({mask_email(x["email"]) for x in logins for d in x["dirs"]
+                       if d == a.config_dir and cfg.resolve_account(d, x["account_id"], x["email"]) is a})
+        shared = len(by_dir[a.config_dir]) > 1
+        role = ("matched to one login" if a.matched else "folder default: sessions from logins without a name"
+                if shared else "")
+        who = "".join(f'<span class="pill">{e(m)}</span>' for m in mine)
+        rows.append(f'<div class="acct"><h3>{e(a.name)}</h3>'
+                    f'<div class="meta"><code>{e(home_relative(a.config_dir))}</code>{who}'
+                    f'{f"<span class=muted>{e(role)}</span>" if role else ""}</div>'
+                    f'<div class="row" style="margin-top:10px">{state}{hook_btn}{remove}</div>'
+                    f'{"" if exists and n else "<details open><summary>How to log in</summary>" + login_cmd + "</details>"}</div>')
 
     detected = _detected_section(cfg, c)
     acct_opts = "".join(f'<option{" selected" if a.name == cfg.summarizer_account else ""}>{e(a.name)}</option>' for a in cfg.accounts)
+    preset = cfg.summary_model if any(cfg.summary_model == v for v, _ in MODEL_CHOICES) else "custom"
+    model_opts = "".join(f'<option value="{v}"{" selected" if v == preset else ""}>{t}</option>' for v, t in MODEL_CHOICES)
+    model_opts += f'<option value="custom"{" selected" if preset == "custom" else ""}>Another model (type its id)</option>'
+    summ = cfg.account(cfg.summarizer_account)
+    shared_note = (f'<p class="muted" style="font-size:.85rem;margin:6px 0 0">{e(summ.name)} shares '
+                   f'<code>{e(home_relative(summ.config_dir))}</code> with another account, so summaries run as '
+                   f'whichever account is logged in there at the time.</p>'
+                   if summ and len(by_dir.get(summ.config_dir, [])) > 1 else "")
     found = shutil.which(cfg.claude_bin)
     claude_state = (f'<span class="state-ok">Found at {e(home_relative(found))}</span>' if found
                     else '<span class="state-bad">Not found. Summaries will fall back to your prompts.</span>')
     svc = services.status()
     svc_rows = "".join(f"<tr><td><code>{e(u)}</code></td><td>{e(s)}</td></tr>" for u, s in svc.items())
     report_on = services.report_timer_enabled()
-    return f"""<h1>Settings<small>Device {e(cfg.device)}</small></h1>
-<section class="block" style="margin-top:24px"><h2>Claude accounts on this device</h2>
-<p class="help">Each account keeps its sessions in its own folder. Installing the hook makes every finished session sync automatically.</p>
+    return f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
+<section class="block" style="margin-top:24px"><h2>Claude accounts</h2>
+<p class="help">Worklog counts every Claude Code session under one of these accounts. Pick the setup that matches how you use Claude Code:</p>
+<div class="setups"><div><b>Each account in its own folder</b>You start one account with plain <code>claude</code> and another with
+<code>CLAUDE_CONFIG_DIR=~/.claude-work claude</code>. Add each folder as an account below and install its hook.</div>
+<div><b>One folder, switching with /login</b>You use plain <code>claude</code> and switch with <code>/logout</code> and
+<code>/login</code>. Keep one account here, install its hook, start a session with each login, then name each login under
+<i>Logins seen on this device</i>.</div></div>
 {"".join(rows)}
-<form method="post" action="/accounts/add" style="border-top:1px solid var(--rule);padding-top:14px;margin-top:6px">{c}
-<h3>Add an account</h3><label for="name">Name</label><input type="text" id="name" name="name" placeholder="work" required pattern="[A-Za-z0-9_-]{{1,40}}">
+{detected}
+<form method="post" action="/accounts/add" style="border-top:1px solid var(--rule);padding-top:16px;margin-top:18px">{c}
+<h3>Add an account in its own folder</h3><label for="name">Name</label><input type="text" id="name" name="name" placeholder="work" required pattern="{NAME_PATTERN}">
 <label for="dir">Claude config folder (leave empty for <code>~/.claude-&lt;name&gt;</code>)</label><input type="text" id="dir" name="dir" placeholder="~/.claude-work">
 <div class="row"><button>Add account</button></div></form></section>
-{detected}
 
 <section class="block"><h2>Summaries and daily report</h2>
 <form method="post" action="/settings/report">{c}
 <div class="check"><input type="checkbox" id="use_ai" name="use_ai" value="1"{" checked" if cfg.use_ai else ""}><label for="use_ai">Write summaries with Claude (uses a small amount of tokens)</label></div>
-<label for="summ">Account that writes the summaries</label><select id="summ" name="summarizer">{acct_opts}</select>
+<label for="model">Model for summaries</label><select id="model" name="model">{model_opts}</select>
+<input type="text" id="model_custom" name="model_custom" aria-label="Model id" placeholder="claude-opus-5-5" value="{e(cfg.summary_model if preset == "custom" else "")}" style="margin-top:8px">
+<p class="muted" style="font-size:.85rem;margin:6px 0 0">“Account default” is whatever <code>claude</code> uses on that account (on Pro that is often Sonnet). Pick Opus for the most accurate summaries. “Another model” uses the id typed in the box.</p>
+<label for="summ">Account that writes the summaries</label><select id="summ" name="summarizer">{acct_opts}</select>{shared_note}
 <label for="bin">Claude command</label><input type="text" id="bin" name="claude_bin" value="{e(cfg.claude_bin)}"><div class="muted" style="font-size:.85rem;margin-top:4px">{claude_state}</div>
 <div class="row"><button>Save changes</button></div></form>
 <form method="post" action="/settings/report-timer" style="border-top:1px solid var(--rule);padding-top:14px;margin-top:16px">{c}
@@ -641,7 +752,7 @@ def page_settings(app: App, cfg: Config) -> str:
 
 <section class="block"><h2>This device</h2>
 <form method="post" action="/settings/device">{c}
-<label for="device">Device name</label><input type="text" id="device" name="device" value="{e(cfg.device)}" required pattern="[A-Za-z0-9_-]{{1,40}}">
+<label for="device">Device name</label><input type="text" id="device" name="device" value="{e(cfg.device)}" required pattern="{NAME_PATTERN}">
 <p class="muted" style="font-size:.85rem">Renaming files new sessions under the new name. Earlier days keep the old one.</p>
 <label for="store">Data repo folder</label><input type="text" id="store" name="store" value="{e(home_relative(cfg.store_repo))}" required>
 <p style="font-size:.9rem">{store_state}</p><div class="row"><button>Save changes</button></div></form></section>
@@ -733,7 +844,13 @@ class App:
                 return None, "Pick one of your accounts to write summaries.", form
             if not binv or len(binv) > 300 or any(ch in binv for ch in "\n\r\0"):
                 return None, "Enter the claude command or its full path.", form
+            model = form.get("model", "").strip()
+            if model == "custom":
+                model = form.get("model_custom", "").strip()
+            if model and not MODEL_RE.match(model):
+                return None, "Model: use an alias such as opus, or a model id such as claude-opus-5-5.", form
             cfg.use_ai, cfg.summarizer_account, cfg.claude_bin = form.get("use_ai") == "1", summ, binv
+            cfg.summary_model = model
             return self._save(cfg, "saved")
         if path == "/settings/report-timer":
             try:
@@ -842,7 +959,21 @@ class App:
             return None, f"This login is already named {linked.name}. Rename that one instead.", form
         else:  # link an existing account (for example the folder's default) to this login
             cfg.accounts = [replace(a, match_account_id=uid) if a is target else a for a in cfg.accounts]
-        return self._save(cfg, "named")
+        loc, err, kept = self._save(cfg, "named")
+        if err is None:
+            self._refile(cfg)
+        return loc, err, kept
+
+    def _refile(self, cfg: Config) -> None:
+        """Re-collect every day Claude Code still keeps, so older sessions move to the right account too."""
+        today = date.today()
+        days = [today - timedelta(days=n) for n in range(REFILE_DAYS - 1, -1, -1)]
+
+        def job():
+            n = collect(cfg, days)
+            return (f"Updated {n} session record(s) from the last {REFILE_DAYS} days under the right account. "
+                    "Days whose Claude Code logs are already deleted keep their old account.")
+        self.jobs.start("Moving sessions to the right account", job)
 
     def _setup(self, form: dict):
         device, aname = form.get("device", "").strip(), form.get("aname", "").strip()

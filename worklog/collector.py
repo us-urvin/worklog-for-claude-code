@@ -115,6 +115,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "api_calls": sd.api_calls,
         "tokens": sd.tokens,
         "tokens_by_model": sd.tokens_by_model,
+        "subagent_tokens_by_model": sd.subagent_tokens_by_model,
         "prompt_count": len(sd.prompts),
         "prompts": prompts,
         "files_touched": files,
