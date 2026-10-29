@@ -48,7 +48,7 @@ def transcript(home: Path, sid: str, ts: datetime, cwd: Path, tokens: int = 100)
 def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:
     p = home / ".config/claude-worklog/config.toml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f'device_name = "dev1"\nstore_repo = "{repo}"\n'
+    p.write_text(f'device_name = "dev1"\nstore_repo = {json.dumps(str(repo))}\n'
                  f'[[accounts]]\nname = "personal"\nconfig_dir = "~/.claude"\n{extra}\n'
                  '[report]\nuse_ai = false\n')
     return load_config(p)

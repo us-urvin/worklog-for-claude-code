@@ -86,7 +86,7 @@ def cfg(home):
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     p = home / ".config/claude-worklog/config.toml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f'device_name = "dev1"\nstore_repo = "{repo}"\n'
+    p.write_text(f'device_name = "dev1"\nstore_repo = {json.dumps(str(repo))}\n'
                  '[[accounts]]\nname = "personal"\nconfig_dir = "~/.claude"\n'
                  '[[accounts]]\nname = "work"\nconfig_dir = "~/.claude-work"\n'
                  '[collect]\nmax_prompt_chars = 40\n[report]\nuse_ai = false\n')

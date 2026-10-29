@@ -122,7 +122,9 @@ def test_run_serves_from_a_temp_home_and_cleans_up(monkeypatch, capsys, how):
     def stop():
         if how == "ctrl-c":
             raise KeyboardInterrupt
-        os.kill(os.getpid(), signal.SIGTERM)  # handled by run(): same cleanup as Ctrl+C
+        # handled by run(): same cleanup as Ctrl+C. raise_signal, not os.kill: on Windows os.kill(own pid)
+        # terminates the process outright (exit code 15) instead of calling the handler.
+        signal.raise_signal(signal.SIGTERM)
 
     real_popen = demo.subprocess.Popen
 
