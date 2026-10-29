@@ -13,7 +13,8 @@ from pathlib import Path
 
 from . import __version__
 from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config
-from .hooks import HOOK_EVENTS, install_hook, installed_events
+from .hooks import HOOK_EVENTS, default_model, install_hook, installed_events
+from .services import _detached
 
 log = logging.getLogger("worklog")
 
@@ -22,7 +23,7 @@ def _setup_logging(verbose: bool, quiet: bool = False) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    fh = RotatingFileHandler(STATE_DIR / "worklog.log", maxBytes=1_000_000, backupCount=3)
+    fh = RotatingFileHandler(STATE_DIR / "worklog.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(fh)
     if not quiet:
@@ -67,12 +68,13 @@ def cmd_doctor(args) -> int:
     git_dir = cfg.store_repo / ".git"
     if git_dir.exists():
         remote = subprocess.run(["git", "-C", str(cfg.store_repo), "remote"],
-                                capture_output=True, text=True).stdout.strip()
+                                capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         print(f"✓ store repo: {cfg.store_repo} (remote: {remote or 'none — local only'})")
     else:
         ok = False
         print(f"✗ store repo: {cfg.store_repo} is not a git clone")
     from .identity import detected_logins, mask_email
+    from .report import model_label
 
     for a in cfg.accounts:
         proj = a.config_dir / "projects"
@@ -85,6 +87,9 @@ def cmd_doctor(args) -> int:
         role = (" [matched login]" if a.matched else
                 " [default for shared folder]" if len(cfg.accounts_by_dir()[a.config_dir]) > 1 else "")
         print(f"{mark} account {a.name}{role}: {a.config_dir} ({n} transcripts, {hooks})")
+        pinned = default_model(a)
+        shown = f"{model_label(pinned)} ({pinned})" if pinned else "not set: the plan default"
+        print(f"  default model: {shown}")
     for login in detected_logins():  # e-mails masked: doctor output gets pasted into issues
         for d in login["dirs"]:
             if d in cfg.accounts_by_dir():
@@ -93,6 +98,18 @@ def cmd_doctor(args) -> int:
     exe = shutil.which(cfg.claude_bin)
     missing = cfg.claude_bin + " not found (AI summaries will fall back to plain)"
     print(f"{'✓' if exe else '!'} claude binary: {exe or missing}")
+    if cfg.use_ai:
+        model = cfg.summary_model or "the default model of account " + str(cfg.summarizer_account)
+        print(f"  summaries are written with: {model}")
+    from . import services
+    py = services.configured_python()
+    auto = services.autostart_ok()
+    if py and not Path(py).exists():
+        ok = False
+        print(f"✗ background service: it starts {py}, which no longer exists (Python was upgraded?). "
+              "Run `claude-worklog install-service` again.")
+    elif auto is not None:
+        print(f"{'✓' if auto else '!'} starts at login: {'yes' if auto else 'no (run claude-worklog install-service)'}")
     return 0 if ok else 1
 
 
@@ -132,8 +149,67 @@ def cmd_install_service(args) -> int:
         print(f"✗ {exc}")
         return 1
     if not args.no_start:
-        print(f"\n✓ Worklog UI is running: http://{HOST_NAME}:{args.port}")
-        print("  It starts automatically whenever you log in. Remove any cron lines you added earlier.")
+        print(f"\n✓ Worklog UI is running: http://{HOST_NAME}:{args.port}  (or http://localhost:{args.port})")
+        print("  It starts automatically whenever you log in.")
+        ask_for_star()
+    return 0
+
+
+REPO = "us-urvin/worklog-for-claude-code"
+REPO_URL = f"https://github.com/{REPO}"
+
+
+def _interactive() -> bool:
+    """A person at a terminal (not a script, a hook or a background service)."""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def ask_for_star(input_fn=input) -> None:
+    """Once, in an interactive terminal: offer to star the project. Nothing happens without a "y"."""
+    from . import services
+    from .checks import set_ui_flag, ui_flag
+    if services.demo_mode() or not _interactive() or ui_flag("star_asked"):
+        return
+    set_ui_flag("star_asked")  # ask only once, whatever the answer
+    try:
+        answer = input_fn("\n⭐ Enjoying Worklog? A GitHub star helps others find it. Star it now? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if answer.strip().lower() not in ("y", "yes"):
+        print(f"  No problem. You can star it any time at {REPO_URL}")
+        return
+    gh = shutil.which("gh")
+    if gh:  # the GitHub CLI, if you're logged in to it: star with your own account
+        try:
+            r = subprocess.run([gh, "api", "--silent", "--method", "PUT", f"/user/starred/{REPO}"],
+                               capture_output=True, text=True, errors="replace", timeout=20)
+            if r.returncode == 0:
+                print("  ⭐ Starred with your GitHub account. Thank you!")
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    import webbrowser
+    opened = False
+    try:
+        opened = webbrowser.open(REPO_URL)
+    except Exception:  # noqa: BLE001 - no browser available is fine
+        opened = False
+    print(f"  {'Opened' if opened else 'Open'} {REPO_URL} and click ★ Star at the top right. Thank you!")
+
+
+def cmd_uninstall_service(args) -> int:
+    from . import services
+    try:
+        for msg in services.uninstall():
+            print(msg)
+    except RuntimeError as exc:
+        print(f"✗ {exc}")
+        return 1
+    print("✓ Worklog no longer starts by itself. Your data and settings are untouched.")
     return 0
 
 
@@ -158,7 +234,7 @@ def cmd_hook(args) -> int:
         subprocess.Popen(  # detached so Claude Code exits immediately
             [sys.executable, "-m", "worklog.cli", "--quiet", "collect", "--days", "2"],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
+            **_detached(),
         )
         note_session(sid, "end")  # after the spawn: the collect must not wait on us
     except Exception:  # noqa: BLE001 - a tracking hook must never break Claude Code
@@ -246,12 +322,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8766)
     p.add_argument("--seed", type=int, default=7, help="change for different fake data")
     p.set_defaults(func=cmd_demo)
-    p = sub.add_parser("install-service", help="run the UI + collect/report timers as systemd user services")
+    p = sub.add_parser("install-service",
+                       help="start the UI at login and schedule collect/report (systemd, launchd or Task Scheduler)")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--report", action=argparse.BooleanOptionalAction, default=True,
                    help="build the daily report on this device (use --no-report on all but one device)")
-    p.add_argument("--no-start", action="store_true", help="only write unit files")
+    p.add_argument("--no-start", action="store_true", help="only write the service files")
     p.set_defaults(func=cmd_install_service)
+    sub.add_parser("uninstall-service", help="stop starting Worklog at login (keeps your data)").set_defaults(
+        func=cmd_uninstall_service)
 
     args = ap.parse_args(argv)
     if args.cmd == "demo":  # its own process must not log into the real state folder

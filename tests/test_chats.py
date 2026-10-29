@@ -68,8 +68,9 @@ D = date(2026, 9, 20)
 def home(tmp_path, monkeypatch):
     h = tmp_path / "home"
     (h / ".claude" / "projects").mkdir(parents=True)
-    for var, sub in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_STATE_HOME", ".local/state"),
-                     ("XDG_DATA_HOME", ".local/share")):
+    for var, sub in (("HOME", ""), ("USERPROFILE", ""), ("XDG_CONFIG_HOME", ".config"),
+                     ("XDG_STATE_HOME", ".local/state"), ("XDG_DATA_HOME", ".local/share"),
+                     ("APPDATA", "AppData/Roaming"), ("LOCALAPPDATA", "AppData/Local")):
         monkeypatch.setenv(var, str(h / sub) if sub else str(h))
     state = h / ".local/state/claude-worklog"
     for mod in (identity, store, cli, chats):
@@ -85,7 +86,7 @@ def cfg(home):
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     p = home / ".config/claude-worklog/config.toml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f'device_name = "dev1"\nstore_repo = "{repo}"\n'
+    p.write_text(f'device_name = "dev1"\nstore_repo = {json.dumps(str(repo))}\n'
                  '[[accounts]]\nname = "personal"\nconfig_dir = "~/.claude"\n'
                  '[[accounts]]\nname = "work"\nconfig_dir = "~/.claude-work"\n'
                  '[collect]\nmax_prompt_chars = 40\n[report]\nuse_ai = false\n')
@@ -93,7 +94,7 @@ def cfg(home):
 
 
 def records(cfg) -> dict[str, dict]:
-    return {str(p.relative_to(cfg.store_repo)): json.loads(p.read_text())
+    return {p.relative_to(cfg.store_repo).as_posix(): json.loads(p.read_text(encoding="utf-8"))
             for p in sorted(cfg.store_repo.rglob("records/**/*.json"))}
 
 
@@ -255,7 +256,9 @@ def test_account_choice_is_remembered_and_records_move(cfg, tmp_path):
     assert res.account == "work" and list(records(cfg)) == [f"records/{D.isoformat()}/dev1/work/chat-c1.json"]
     assert chats.import_chats(cfg, z).account == "work"  # remembered for this claude.ai login
     state = json.loads(chats.state_path().read_text())
-    assert ACCT not in json.dumps(state) and oct(chats.state_path().stat().st_mode)[-3:] == "600"
+    assert ACCT not in json.dumps(state)
+    if os.name != "nt":  # Windows has no Unix modes; files there are private to the user profile
+        assert oct(chats.state_path().stat().st_mode)[-3:] == "600"
 
 
 def test_cli_import_chats(cfg, tmp_path, capsys, monkeypatch):
@@ -307,7 +310,7 @@ def test_downloads_dir_from_xdg_user_dirs(home):
     from worklog.config import default_downloads_dir
     assert default_downloads_dir() == home / "Downloads"
     (home / ".config").mkdir(exist_ok=True)
-    (home / ".config/user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n')
+    (home / ".config/user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n', encoding="utf-8")
     assert default_downloads_dir() == home / "Téléchargements"
 
 

@@ -8,11 +8,13 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .config import SUMMARIZER_CWD, Account, Config
-from .identity import Identity, session_logins
+from .config import SUMMARIZER_CWD, Account, Config, home_relative
+from .identity import Identity, load_state, session_logins
 from .parser import ParseStats, SessionDay, parse_transcript
 from .redact import redact
 from .store import GitStore
+from .watcher import load_state as watch_state
+from .watcher import login_at
 
 log = logging.getLogger(__name__)
 SCHEMA = 1
@@ -20,9 +22,7 @@ _SAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _home_relative(p: Path | str) -> str:
-    p = str(p)
-    home = str(Path.home())
-    return "~" + p[len(home):] if p == home or p.startswith(home + "/") else p
+    return home_relative(p)
 
 
 def find_git_root(start: Path) -> Path | None:
@@ -54,7 +54,8 @@ def sanitize_remote(url: str) -> dict | None:
 
 def _git(root: Path, *args: str) -> str | None:
     try:
-        out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=15)
+        out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=15)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.debug("git %s failed in %s: %s", args[0], root, exc)
         return None
@@ -98,7 +99,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
     files = []
     for f in sorted(sd.files)[:200]:
         fp = Path(f)
-        files.append(str(fp.relative_to(root)) if root and root in fp.parents else _home_relative(fp))
+        files.append(fp.relative_to(root).as_posix() if root and root in fp.parents else _home_relative(fp))
 
     prompts = [redact(p)[: cfg.max_prompt_chars] for p in sd.prompts[: cfg.max_prompts]]
     minutes = round((sd.last - sd.first).total_seconds() / 60) if sd.first and sd.last else 0
@@ -115,6 +116,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "api_calls": sd.api_calls,
         "tokens": sd.tokens,
         "tokens_by_model": sd.tokens_by_model,
+        "subagent_tokens_by_model": sd.subagent_tokens_by_model,
         "prompt_count": len(sd.prompts),
         "prompts": prompts,
         "files_touched": files,
@@ -152,16 +154,33 @@ def _move_stale(store: GitStore, day: date, device: str, account: str, fname: st
     for old in sorted(base.glob(f"*/{fname}")) if base.is_dir() else []:
         if old.parent.name == account:
             continue
-        src, dst = str(old.relative_to(store.path)), f"records/{day.isoformat()}/{device}/{account}/{fname}"
+        src, dst = old.relative_to(store.path).as_posix(), f"records/{day.isoformat()}/{device}/{account}/{fname}"
         store.move(src, dst)
         log.info("session %s: record moved from account %s to %s", fname[:8], old.parent.name, account)
         moved += 1
     return moved
 
 
+def _watched_login(watched: dict, config_dir: Path, started: datetime | None,
+                   shared: bool) -> tuple[Identity | None, str]:
+    """(login, source) for a session the hook didn't record.
+
+    "watcher": the watcher saw who was logged in when the session started.
+    "folder":  the folder has a single account, so it can only be that one.
+    "default": several accounts share the folder and nobody knows; the folder default is used.
+    """
+    if started is not None:
+        m = login_at(watched, config_dir, started)
+        if m.status == "match" and m.account_id:
+            email = (load_state().get("logins", {}).get(m.account_id) or {}).get("email")
+            return Identity(m.account_id, email if isinstance(email, str) else None), "watcher"
+    return None, "default" if shared else "folder"
+
+
 def collect(cfg: Config, days: list[date]) -> int:
     store = GitStore(cfg.store_repo)
     logins: dict[str, Identity] = session_logins()  # local state written by the SessionStart hook
+    watched = watch_state()  # login timeline kept by the watcher (covers sessions without a hook record)
     written = 0
     with store.lock():
         store.pull()
@@ -180,11 +199,16 @@ def collect(cfg: Config, days: list[date]) -> int:
                         log.warning("cannot read %s: %s", path, exc)
                 for sd in sessions.values():
                     login = logins.get(sd.session_id)
+                    source = "hook"
+                    if login is None:
+                        login, source = _watched_login(watched, config_dir, stats.session_first.get(sd.session_id),
+                                                       shared=len(group) > 1)
                     account = (cfg.resolve_account(config_dir, login.account_id, login.email) if login
                                else cfg.default_account(config_dir))  # unrecorded / older sessions
                     record = build_record(sd, account, cfg)
                     if record is None:
                         continue
+                    record["account_source"] = source
                     fname = f"{_SAFE.sub('_', sd.session_id)}.json"
                     if login:
                         written += _move_stale(store, day, cfg.device, account.name, fname)

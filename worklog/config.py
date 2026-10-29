@@ -32,6 +32,8 @@ DEFAULT_CLAUDE_DIR = Path.home() / ".claude"
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _ACCOUNT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
+# A Claude Code model alias (opus, sonnet, haiku) or full id (claude-opus-5-5, claude-sonnet-5-5[1m]).
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,99}$")
 
 EXAMPLE_CONFIG = """\
 # claude-worklog configuration
@@ -53,7 +55,7 @@ config_dir = "~/.claude"
 
 # Several accounts can share ONE folder (switching with /logout and /login).
 # Each extra account is matched by the login recorded at session start; name them in
-# the web UI (Settings > Detected accounts). The account without match_* is the
+# the web UI (Settings > Logins seen on this device). The account without match_* is the
 # folder's default and gets every session that matches no other account.
 # [[accounts]]
 # name = "client"
@@ -70,6 +72,7 @@ max_prompt_chars = 300
 use_ai = true                 # summarize with `claude -p`; false = plain listing
 summarizer_account = "personal"
 claude_bin = "claude"         # use an absolute path if running from cron
+model = ""                    # model for summaries: "opus", "sonnet", "haiku" or a full id; empty = account default
 ai_timeout_seconds = 180
 
 [chat]
@@ -78,6 +81,14 @@ account = ""                  # worklog account for imported chats; empty = the 
 watch_downloads = false       # import new conversations-*.zip files found in downloads_dir on each sync
 downloads_dir = ""            # empty = your Downloads folder
 keep_summaries = false        # also keep claude.ai's own per-chat summary (written by Claude), shortened and redacted
+
+[watch]
+# While the web UI runs, it notices account switches (by /login or any one-click tool) and new Claude folders.
+auto_setup = false            # true = add new Claude folders as accounts and reinstall missing hooks without asking
+
+[ui]
+fun = true                    # confetti on records, streak flame, sleepy robot on empty days, party mode
+check_updates = true          # once a day, ask pypi.org whether a newer version is out (nothing about you is sent)
 """
 
 
@@ -111,11 +122,15 @@ class Config:
     use_ai: bool = True
     summarizer_account: str | None = None
     claude_bin: str = "claude"
+    summary_model: str = ""  # passed to `claude -p --model`; empty = the account's default
     ai_timeout: int = 180
     chat_account: str | None = None
     watch_downloads: bool = False
     downloads_dir: Path | None = None
     keep_chat_summaries: bool = False
+    auto_setup: bool = False  # [watch]: add new Claude folders and reinstall vanished hooks without asking
+    fun: bool = True  # [ui]: confetti, streak flame, sleepy robot, party mode
+    check_updates: bool = True  # [ui]: ask PyPI once a day whether a newer version is out
     path: Path = field(default=CONFIG_PATH)
 
     @property
@@ -162,7 +177,7 @@ def default_downloads_dir() -> Path:
     dirs = _xdg("XDG_CONFIG_HOME", ".config") / "user-dirs.dirs"
     try:
         m = re.search(r'^XDG_DOWNLOAD_DIR="([^"]+)"', dirs.read_text(encoding="utf-8"), re.M)
-    except OSError:
+    except (OSError, UnicodeDecodeError):  # missing, or not UTF-8: fall back to ~/Downloads
         m = None
     if m:
         return Path(m.group(1).replace("$HOME", str(Path.home()))).expanduser()
@@ -191,6 +206,21 @@ def _match_id(name: str, v: object) -> str | None:
         return None
     if not isinstance(v, str) or not _ACCOUNT_ID_RE.match(v):
         raise ConfigError(f"account {name}: match_account_id must be the account id from Claude Code")
+    return v
+
+
+def _table(raw: dict, name: str) -> dict:
+    t = raw.get(name, {})
+    if not isinstance(t, dict):
+        raise ConfigError(f"[{name}] must be a table")
+    return t
+
+
+def _model(v: object) -> str:
+    if v is None or v == "":
+        return ""
+    if not isinstance(v, str) or not MODEL_RE.match(v):
+        raise ConfigError('[report] model must be an alias such as "opus" or a model id such as "claude-opus-5-5"')
     return v
 
 
@@ -268,11 +298,15 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         use_ai=bool(rep.get("use_ai", True)),
         summarizer_account=rep.get("summarizer_account") or accounts[0].name,
         claude_bin=str(rep.get("claude_bin", "claude")),
+        summary_model=_model(rep.get("model")),
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
         keep_chat_summaries=bool(chat.get("keep_summaries", False)),
+        auto_setup=bool(_table(raw, "watch").get("auto_setup", False)),
+        fun=bool(_table(raw, "ui").get("fun", True)),
+        check_updates=bool(_table(raw, "ui").get("check_updates", True)),
         path=path,
     )
     if cfg.account(cfg.summarizer_account) is None:
@@ -289,8 +323,13 @@ def example_config() -> str:
 
 # ------------------------------------------------------------------ writing
 def home_relative(p: Path | str) -> str:
-    s, home = str(p), str(Path.home())
-    return "~" + s[len(home):] if s == home or s.startswith(home + "/") else s
+    """~/x for paths in the home folder, always with "/" so records look the same on every OS."""
+    path, home = Path(p), Path.home()
+    try:
+        rel = path.relative_to(home)
+    except ValueError:
+        return str(p)
+    return "~" if str(rel) == "." else "~/" + rel.as_posix()
 
 
 def under_home(p: Path, allow_home: bool = False) -> bool:
@@ -319,10 +358,13 @@ def dump_config(cfg: Config) -> str:
     out += ["[collect]", f"misc_label = {q(cfg.misc_label)}", f"include_commits = {b(cfg.include_commits)}",
             f"max_prompts_per_session = {cfg.max_prompts}", f"max_prompt_chars = {cfg.max_prompt_chars}", "",
             "[report]", f"use_ai = {b(cfg.use_ai)}", f"summarizer_account = {q(cfg.summarizer_account)}",
-            f"claude_bin = {q(cfg.claude_bin)}", f"ai_timeout_seconds = {cfg.ai_timeout}", "",
+            f"claude_bin = {q(cfg.claude_bin)}", f"model = {q(cfg.summary_model)}",
+            f"ai_timeout_seconds = {cfg.ai_timeout}", "",
             "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
-            f"keep_summaries = {b(cfg.keep_chat_summaries)}", ""]
+            f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",
+            "[watch]", f"auto_setup = {b(cfg.auto_setup)}", "",
+            "[ui]", f"fun = {b(cfg.fun)}", f"check_updates = {b(cfg.check_updates)}", ""]
     return "\n".join(out)
 
 

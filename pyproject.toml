@@ -5,19 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 # Distribution name on PyPI. The command stays `claude-worklog` and the package stays `worklog`.
 name = "worklog-for-claude-code"
-version = "0.2.1"
-description = "Daily work log and token report across Claude Code accounts and devices, plus imported claude.ai chats, synced through your own private git repo"
+version = "0.3.0"
+description = "See what you did with Claude Code each day and how many tokens it used: an automatic daily work log across accounts and devices, private by default"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Urvin" }]
-keywords = ["claude-code", "claude", "claude-ai", "worklog", "time-tracking", "token-usage", "developer-tools", "daily-report"]
+keywords = ["claude-code", "claude", "claude-ai", "anthropic", "worklog", "time-tracking", "token-usage", "token-tracker", "usage-tracker", "standup", "developer-tools", "daily-report", "productivity"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Environment :: Web Environment",
     "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -39,6 +41,7 @@ dev = ["pytest>=7", "ruff==0.17.0", "build"]
 Homepage = "https://github.com/us-urvin/worklog-for-claude-code"
 Source = "https://github.com/us-urvin/worklog-for-claude-code"
 Issues = "https://github.com/us-urvin/worklog-for-claude-code/issues"
+Documentation = "https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GETTING-STARTED.md"
 Changelog = "https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md"
 
 [project.scripts]

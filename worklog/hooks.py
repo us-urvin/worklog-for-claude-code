@@ -7,6 +7,8 @@ One command handles both events; it reads `hook_event_name` from stdin:
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import shutil
 import sys
 from datetime import datetime
@@ -17,13 +19,24 @@ HOOK_MARKER = "claude-worklog hook"
 HOOK_EVENTS = ("SessionStart", "SessionEnd")
 
 
+def _quote(path: str) -> str:
+    """Quote a program path for the shell Claude Code runs hooks in (bash, also on Windows)."""
+    if sys.platform == "win32":
+        return f'"{path}"' if any(c in path for c in ' ()&') else path
+    return shlex.quote(path)
+
+
 def hook_command() -> str:
     exe = shutil.which("claude-worklog")
-    return f"{exe} hook" if exe else f"{sys.executable} -m worklog.cli hook  # {HOOK_MARKER}"
+    return f"{_quote(exe)} hook" if exe else f"{_quote(sys.executable)} -m worklog.cli hook  # {HOOK_MARKER}"
+
+
+_OURS = re.compile(r"claude-worklog(?:\.exe)?['\"]?\s+hook\b|worklog\.cli\s+hook\b", re.IGNORECASE)
 
 
 def _is_ours(command: object) -> bool:
-    return isinstance(command, str) and (HOOK_MARKER in command or "worklog.cli hook" in command)
+    """Our hook, however it was written: plain, quoted, or `claude-worklog.EXE` on Windows."""
+    return isinstance(command, str) and bool(_OURS.search(command))
 
 
 def _events_in(settings: object) -> set[str]:
@@ -44,6 +57,16 @@ def installed_events(account: Account) -> set[str]:
         return _events_in(json.loads((account.config_dir / "settings.json").read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return set()
+
+
+def default_model(account: Account) -> str | None:
+    """The `model` the account's settings.json pins (what `/model` saves), or None for the plan's default."""
+    try:
+        settings = json.loads((account.config_dir / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    model = settings.get("model") if isinstance(settings, dict) else None
+    return model.strip()[:100] if isinstance(model, str) and model.strip() else None
 
 
 def hook_installed(account: Account) -> bool:

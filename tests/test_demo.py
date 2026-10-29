@@ -122,7 +122,9 @@ def test_run_serves_from_a_temp_home_and_cleans_up(monkeypatch, capsys, how):
     def stop():
         if how == "ctrl-c":
             raise KeyboardInterrupt
-        os.kill(os.getpid(), signal.SIGTERM)  # handled by run(): same cleanup as Ctrl+C
+        # handled by run(): same cleanup as Ctrl+C. raise_signal, not os.kill: on Windows os.kill(own pid)
+        # terminates the process outright (exit code 15) instead of calling the handler.
+        signal.raise_signal(signal.SIGTERM)
 
     real_popen = demo.subprocess.Popen
 
@@ -143,3 +145,25 @@ def test_run_serves_from_a_temp_home_and_cleans_up(monkeypatch, capsys, how):
     assert not srv.home.exists()  # temporary folder removed on exit
     assert signal.getsignal(signal.SIGTERM) == before
     assert "8799" in capsys.readouterr().out
+
+
+def test_html_patterns_are_valid_in_modern_browsers():
+    """Browsers compile `pattern` with the `v` flag, where a bare '-' at the end of a class is an error."""
+    import re
+
+    from worklog import web
+    pages = web.page_setup(web.App(1)) + web.CSS
+    for pattern in re.findall(r'pattern="([^"]*)"', pages):
+        assert "_-]" not in pattern, pattern
+
+
+def test_stylesheet_rules_are_well_formed():
+    """Every declaration block has its selector: a lost "selector{" once left the notices unstyled."""
+    import re
+
+    from worklog import web
+    css = re.sub(r"/\*.*?\*/", "", web.CSS, flags=re.S)
+    assert css.count("{") == css.count("}")
+    for chunk in css.split("}"):
+        assert not chunk.strip() or "{" in chunk, f"declarations without a selector: {chunk.strip()[:80]}"
+    assert ".notice{" in css and ".checklist{" in css

@@ -23,7 +23,7 @@ from .report import project_key
 from .services import DEMO_ENV
 
 DEVICES = ("laptop", "desktop")  # the demo runs as "laptop"; "desktop" plays another synced machine
-MODELS = ("claude-sonnet-5", "claude-opus-5-5", "claude-haiku-4-5")
+MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 
 # name, host, slug (None = outside any git repo), account, weight, prompts, files, commits, summary bullets
 PROJECTS = [
@@ -87,6 +87,9 @@ CHATS = [
 def demo_env(home: Path) -> dict[str, str]:
     """Environment for processes that must only ever see the fake home."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "CLAUDE_", "GIT_"))}
+    # USERPROFILE/APPDATA: on Windows, Python finds the home folder there, not in HOME.
+    env.update(USERPROFILE=str(home), APPDATA=str(home / "AppData" / "Roaming"),
+               LOCALAPPDATA=str(home / "AppData" / "Local"))
     env.update(HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"), XDG_STATE_HOME=str(home / ".local/state"),
                XDG_DATA_HOME=str(home / ".local/share"), XDG_CACHE_HOME=str(home / ".cache"),
                GIT_CONFIG_NOSYSTEM="1", PYTHONUNBUFFERED="1")
@@ -125,10 +128,15 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
     minutes = rng.randint(12, 150)
     end = start + timedelta(minutes=minutes)
     model = rng.choices(MODELS, weights=(6, 2, 2))[0]
-    scale = {"claude-opus-5-5": 1.4, "claude-haiku-4-5": 0.6}.get(model, 1.0)
+    scale = {"claude-opus-5-5": 1.4, "claude-haiku-5-5": 0.6}.get(model, 1.0)
     tokens = {"input": int(rng.randint(2_000, 30_000) * scale), "output": int(rng.randint(8_000, 90_000) * scale),
               "cache_creation": int(rng.randint(40_000, 300_000) * scale),
               "cache_read": int(rng.randint(400_000, 4_000_000) * scale)}
+    by_model, sub = {model: tokens}, {}
+    if model != "claude-haiku-5-5":  # like real sessions, a fifth of the work runs in Haiku sub-agents
+        helper = {k: v // 5 for k, v in tokens.items()}
+        by_model = {model: {k: v - helper[k] for k, v in tokens.items()}, "claude-haiku-5-5": helper}
+        sub = {"claude-haiku-5-5": helper}
     prompts = rng.sample(proj["prompts"], k=min(len(proj["prompts"]), rng.randint(1, 3)))
     files = sorted(rng.sample(proj["files"], k=min(len(proj["files"]), rng.randint(1, 3))))
     commits = [{"hash": f"{rng.getrandbits(28):07x}", "subject": s}
@@ -145,7 +153,7 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
         "account": proj["account"], "device": device, "project": project,
         "start": start.isoformat(timespec="seconds"), "end": end.isoformat(timespec="seconds"),
         "span_minutes": minutes, "api_calls": rng.randint(8, 120), "tokens": tokens,
-        "tokens_by_model": {model: tokens}, "prompt_count": len(prompts), "prompts": prompts,
+        "tokens_by_model": by_model, "subagent_tokens_by_model": sub, "prompt_count": len(prompts), "prompts": prompts,
         "files_touched": files, "tool_calls": {"Read": rng.randint(3, 40), "Edit": rng.randint(1, 20),
                                                "Bash": rng.randint(0, 15)},
         "commits": commits if proj["slug"] else [],
@@ -190,6 +198,23 @@ def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = N
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(_config(home, store), encoding="utf-8")
     cfg_path.chmod(0o600)
+
+    # Logins as the SessionStart hook records them: two share ~/.claude (one not named yet), one has its own folder.
+    from .identity import Identity, record_session
+    state = home / ".local" / "state" / "claude-worklog" / "accounts.json"
+    for sid, folder, ident in (("demo-login-1", ".claude", Identity("demo-0000-personal", "you@example.com")),
+                               ("demo-login-2", ".claude", Identity("demo-0000-client", "contractor@example.org")),
+                               ("demo-login-3", ".claude-work", Identity("demo-0000-work", "you@company.example"))):
+        record_session(sid, home / folder, ident, "start", path=state, now=now.astimezone())
+
+    # Hooks installed and some (empty) session files, so Settings looks like a set-up device.
+    from .config import Account
+    from .hooks import install_hook
+    for name, folder in (("personal", ".claude"), ("work", ".claude-work")):
+        install_hook(Account(name, home / folder))
+        for i in range(9 if name == "personal" else 6):
+            (home / folder / "projects" / "-demo" / f"demo-{i}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+            (home / folder / "projects" / "-demo" / f"demo-{i}.jsonl").touch()
 
     weights = [p["weight"] for p in PROJECTS]
     for back in range(days):

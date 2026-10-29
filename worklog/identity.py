@@ -12,19 +12,17 @@ file (and in config.toml if you match by them); only the account NAME reaches re
 """
 from __future__ import annotations
 
-import errno
-import fcntl
 import hashlib
 import json
 import logging
 import os
-import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import STATE_DIR, _expand, home_relative
+from .locks import exclusive
 
 log = logging.getLogger(__name__)
 STATE_VERSION = 1
@@ -140,22 +138,9 @@ def _save_state(state: dict, path: Path) -> None:
 
 @contextmanager
 def _lock(path: Path, timeout: float):
-    """Short exclusive lock for the state file (separate from the store lock, which can be held long)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path.with_suffix(".lock"), "w") as fh:
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError as exc:
-                if exc.errno not in (errno.EAGAIN, errno.EACCES) or time.monotonic() > deadline:
-                    raise TimeoutError("account state is locked") from exc
-                time.sleep(0.05)
-        try:
-            yield
-        finally:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+    """Short exclusive lock for a state file (separate from the store lock, which can be held long)."""
+    with exclusive(path.with_suffix(".lock"), timeout, what="account state"):
+        yield
 
 
 def _prune(state: dict, now: datetime) -> None:
@@ -194,6 +179,23 @@ def record_session(session_id: str, config_dir: Path, ident: Identity | None, ev
             if d not in login.get("dirs", []):
                 login["dirs"] = sorted({*login.get("dirs", []), d})
         _prune(state, now)
+        _save_state(state, path)
+
+
+def note_login(config_dir: Path, ident: Identity, path: Path | None = None, now: datetime | None = None,
+               timeout: float = 2.0) -> None:
+    """Remember a login seen in `config_dir` without a session (the watcher noticed it)."""
+    path = path or state_path()
+    stamp = (now or datetime.now().astimezone()).isoformat(timespec="seconds")
+    with _lock(path, timeout):
+        state = load_state(path)
+        login = state["logins"].setdefault(ident.account_id, {"first_seen": stamp, "dirs": []})
+        login["last_seen"] = stamp
+        if ident.email:
+            login["email"] = ident.email
+        d = home_relative(config_dir)
+        if d not in login.get("dirs", []):
+            login["dirs"] = sorted({*login.get("dirs", []), d})
         _save_state(state, path)
 
 

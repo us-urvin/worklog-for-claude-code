@@ -6,18 +6,37 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-10-05
+## [0.3.0] - 2026-10-29
+
+Everything since 0.2.0 (0.2.1 was never released on its own).
 
 ### Added
-- Optional: keep claude.ai's own summary of each chat (`[chat] keep_summaries`, a checkbox on the Sources page,
-  off by default). Shortened to 600 characters and redacted; turning it off removes them again.
-- Days with claude.ai chats get a dot in the 14-day chart (and a chat count in its tooltip), the Sources page
-  lists them, an empty day links to your latest chats, and the import message names the latest chat day.
+- **macOS and Windows**, not just Linux. `install-service` uses systemd, launchd, or the Windows Startup list
+  plus Task Scheduler (no admin rights). New `claude-worklog uninstall-service`.
+- **Right account for every session**, even without the hook: while Worklog runs it notices account switches
+  (by `/login` or any one-click account app) and new Claude folders, and shows a notice with a one-click fix.
+- **Pick the model that writes your summaries** (Settings → Summaries; Opus gives the best ones).
+- **Setup checklist** with the exact command for your system, shown until everything works.
+- **Update notice**: when a new version is out, the dashboard says so and can update itself with one click.
+- **Redesigned, animated dashboard**: stat tiles, a 14-day chart, "When you worked", the last 5 weeks with
+  your streak, projects today and a model donut. Light and dark mode, phone sizes, reduced motion respected.
+- **Fun mode** (switch in Settings): streak flame, a daily fun fact, confetti for records, a sleepy robot on
+  empty days and a hidden party mode.
+- "By model" shows readable names, each model's share and how much came from sub-agents.
+- claude.ai chats: optional claude.ai summary per chat, each chat shown on its own, chat days marked in the chart.
+- `doctor` shows each account's default model, the summary model and whether Worklog starts at login.
+- After `install-service`, a one-time question whether you'd like to star the project on GitHub.
+- Beginner guide, troubleshooting page, screenshots and a short video.
 
 ### Changed
-- Each claude.ai chat is shown on its own, with its title, time and either its summary or your first messages,
-  instead of one merged list of prompts. Untitled chats are named after your first message.
-- AI summaries ("Write summaries") get each chat's title, messages and kept summary, so they describe what was done.
+- Settings explains both multi-account setups in one place; a login alone in its own folder no longer asks for
+  a name.
+- Records use "/" paths and LF line endings everywhere, so all systems can share one data repo.
+
+### Fixed
+- Summaries ran on the account's default model (often Sonnet) instead of a model you choose.
+- Naming or renaming a login only moved the last 2 days of sessions; it now moves the last 30.
+- Name fields in forms used a pattern current browsers reject, so their checks were skipped.
 
 ## [0.2.0] - 2026-10-04
 
@@ -63,7 +82,7 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/us-urvin/worklog-for-claude-code/releases/tag/v0.1.0

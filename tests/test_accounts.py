@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from worklog import cli, collector, identity, store, web
+from worklog import cli, collector, identity, web
 from worklog.config import Account, Config, ConfigError, dump_config, load_config
 from worklog.hooks import install_hook, installed_events
 
@@ -21,23 +21,7 @@ UID_A, EMAIL_A = "11111111-aaaa-4aaa-8aaa-111111111111", "alice.personal@example
 UID_B, EMAIL_B = "22222222-bbbb-4bbb-8bbb-222222222222", "bob.work@example.org"
 
 
-# ------------------------------------------------------------------ fixtures
-@pytest.fixture
-def home(tmp_path, monkeypatch):
-    """A throwaway HOME; state and logs are redirected into it too."""
-    h = tmp_path / "home"
-    (h / ".claude" / "projects").mkdir(parents=True)
-    for var, sub in (("HOME", ""), ("XDG_CONFIG_HOME", ".config"), ("XDG_STATE_HOME", ".local/state"),
-                     ("XDG_DATA_HOME", ".local/share")):
-        monkeypatch.setenv(var, str(h / sub) if sub else str(h))
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    state = h / ".local/state/claude-worklog"
-    for mod in (identity, store, cli):
-        monkeypatch.setattr(mod, "STATE_DIR", state)
-    assert Path.home() == h  # guard: never run against the real home
-    return h
-
-
+# ------------------------------------------------------------------ helpers (fixtures: conftest.py)
 def login(home: Path, uid: str | None, email: str | None, path: Path | None = None) -> None:
     """Simulate `/login`: write oauthAccount (no credentials) into the fake ~/.claude.json."""
     path = path or home / ".claude.json"
@@ -61,25 +45,18 @@ def transcript(home: Path, sid: str, ts: datetime, cwd: Path, tokens: int = 100)
     (d / f"{sid}.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
 
 
-@pytest.fixture
-def repo(home):
-    r = home / "data"
-    r.mkdir()
-    subprocess.run(["git", "init", "-q", str(r)], check=True)
-    return r
-
-
 def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:
     p = home / ".config/claude-worklog/config.toml"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f'device_name = "dev1"\nstore_repo = "{repo}"\n'
+    p.write_text(f'device_name = "dev1"\nstore_repo = {json.dumps(str(repo))}\n'
                  f'[[accounts]]\nname = "personal"\nconfig_dir = "~/.claude"\n{extra}\n'
                  '[report]\nuse_ai = false\n')
     return load_config(p)
 
 
 def records(repo: Path) -> dict[str, dict]:
-    return {str(p.relative_to(repo)): json.loads(p.read_text()) for p in sorted(repo.rglob("records/**/*.json"))}
+    return {p.relative_to(repo).as_posix(): json.loads(p.read_text(encoding="utf-8"))
+            for p in sorted(repo.rglob("records/**/*.json"))}
 
 
 def start_session(home: Path, sid: str, capsys=None) -> None:
@@ -132,7 +109,8 @@ def test_session_start_hook_records_account_privately(home, capsys):
     start_session(home, "sess-1")
     assert capsys.readouterr().out == ""  # SessionStart stdout would be injected into Claude's context
     state_file = home / ".local/state/claude-worklog/accounts.json"
-    assert (state_file.stat().st_mode & 0o777) == 0o600
+    if os.name != "nt":  # Windows has no Unix modes; files there are private to the user profile
+        assert (state_file.stat().st_mode & 0o777) == 0o600
     assert identity.session_logins()["sess-1"] == identity.Identity(UID_A, EMAIL_A)
     log_text = (home / ".local/state/claude-worklog/worklog.log").read_text()
     assert EMAIL_A not in log_text and UID_A not in log_text
@@ -281,7 +259,7 @@ def test_detected_accounts_panel_masks_and_names(home, repo, monkeypatch):
     identity.record_session("s", home / ".claude", identity.Identity(UID_B, "<b>" + EMAIL_B), "start")
     html_out = web._detected_section(cfg, '<input type="hidden" name="csrf" value="t">')
     assert EMAIL_B not in html_out and UID_B not in html_out and "<b><" not in html_out
-    assert "&lt;***@example.org" in html_out and "folder default" in html_out
+    assert "&lt;***@example.org" in html_out and "Counted as personal" in html_out  # only login in its folder
 
     saved = []
     monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
@@ -297,3 +275,115 @@ def test_detected_accounts_panel_masks_and_names(home, repo, monkeypatch):
                  {"ref": ref, "dir": "~/.claude", "name": "bad name!"}):
         n = len(saved)
         assert app._account_name(cfg, form)[1] and len(saved) == n
+
+
+# ------------------------------------------------------------------ 0.3.0: summary model, re-filing history
+def _wait_for_job(app, timeout=10.0):
+    import time
+    deadline = time.monotonic() + timeout
+    while app.jobs.snapshot().get("running"):
+        assert time.monotonic() < deadline, "background job did not finish"
+        time.sleep(0.05)
+    return app.jobs.snapshot()
+
+
+def test_naming_a_login_refiles_older_days_too(home, repo, monkeypatch):
+    """Naming a login must fix every day Claude Code still has, not just the last two."""
+    cfg = make_cfg(home, repo)
+    old = (datetime.now().astimezone() - timedelta(days=5)).replace(hour=12, minute=0, second=0, microsecond=0)
+    d = old.date().isoformat()
+    login(home, UID_B, EMAIL_B)
+    start_session(home, "s-old")
+    transcript(home, "s-old", old, home)
+    collector.collect(cfg, [old.date()])
+    assert f"records/{d}/dev1/personal/s-old.json" in records(repo)  # unnamed login -> folder default
+
+    from worklog.config import save_config
+    monkeypatch.setattr(web, "save_config", lambda c: save_config(c, c.path))
+    monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
+    app = web.App(8765)
+    loc, err, _ = app.post("/accounts/name", {"ref": identity.ref(UID_B), "dir": "~/.claude", "name": "work"})
+    assert err is None and loc.startswith("/settings")
+    state = _wait_for_job(app)
+    assert state["ok"], state["message"]
+    recs = records(repo)
+    assert f"records/{d}/dev1/work/s-old.json" in recs
+    assert f"records/{d}/dev1/personal/s-old.json" not in recs
+
+
+def test_summary_uses_the_configured_model(home, repo, monkeypatch):
+    from worklog import report
+    cfg = make_cfg(home, repo)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "- did a thing\n", "")
+    monkeypatch.setattr(report.shutil, "which", lambda _: "/usr/bin/claude")
+    monkeypatch.setattr(report.subprocess, "run", fake_run)
+    p = report.ProjectDay("k", "proj", "git", None)
+    p.prompts.append(("09:00", "fix the bug"))
+
+    assert report.ai_summary(p, datetime.now().date(), cfg) == ["- did a thing"]
+    assert "--model" not in calls[-1]  # default: the account's own default model
+
+    cfg.summary_model = "opus"
+    report.ai_summary(p, datetime.now().date(), cfg)
+    i = calls[-1].index("--model")
+    assert calls[-1][i + 1] == "opus"
+
+
+def test_summary_model_config_roundtrip_and_validation(home, repo):
+    cfg = make_cfg(home, repo)
+    assert cfg.summary_model == ""
+    cfg.summary_model = "claude-opus-5-5"
+    cfg.path.write_text(dump_config(cfg))
+    assert load_config(cfg.path).summary_model == "claude-opus-5-5"
+    for bad in ("--dangerously-skip-permissions", "opus 5", "a" * 101, "op;us"):
+        cfg.path.write_text(dump_config(cfg).replace('"claude-opus-5-5"', json.dumps(bad)))
+        with pytest.raises(ConfigError):
+            load_config(cfg.path)
+
+
+def test_settings_form_saves_summary_model(home, repo, monkeypatch):
+    cfg = make_cfg(home, repo)
+    saved = []
+    monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
+    monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
+    app = web.App(8765)
+    base = {"summarizer": "personal", "claude_bin": "claude", "use_ai": "1"}
+    assert app.post("/settings/report", {**base, "model": "opus"})[1] is None
+    assert saved[-1].summary_model == "opus"
+    assert app.post("/settings/report", {**base, "model": "custom", "model_custom": "claude-opus-5-5"})[1] is None
+    assert saved[-1].summary_model == "claude-opus-5-5"
+    assert app.post("/settings/report", {**base, "model": ""})[1] is None
+    assert saved[-1].summary_model == ""
+    n = len(saved)
+    assert app.post("/settings/report", {**base, "model": "custom", "model_custom": "--evil"})[1]
+    assert len(saved) == n
+
+
+def test_doctor_shows_default_and_summary_models(home, repo, capsys, monkeypatch):
+    cfg = make_cfg(home, repo)
+    cfg.use_ai, cfg.summary_model = True, "opus"
+    cfg.path.write_text(dump_config(cfg))
+    monkeypatch.setattr(cli, "load_config", lambda: load_config(cfg.path))
+    (home / ".claude" / "settings.json").write_text(json.dumps({"model": "claude-sonnet-5-5"}))
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "default model: Sonnet 5.5 (claude-sonnet-5-5)" in out
+    assert "summaries are written with: opus" in out
+    (home / ".claude" / "settings.json").write_text("{}")
+    cli.main(["doctor"])
+    assert "default model: not set: the plan default" in capsys.readouterr().out
+
+
+def test_login_panel_only_asks_for_a_name_when_logins_share_a_folder(home, repo):
+    cfg = make_cfg(home, repo)
+    c = '<input type="hidden" name="csrf" value="t">'
+    identity.record_session("s1", home / ".claude", identity.Identity(UID_A, EMAIL_A), "start")
+    one = web._detected_section(cfg, c)
+    assert "Counted as personal" in one and "/accounts/name" not in one  # its own folder: nothing to name
+    identity.record_session("s2", home / ".claude", identity.Identity(UID_B, EMAIL_B), "start")
+    two = web._detected_section(cfg, c)
+    assert two.count('action="/accounts/name"') == 2 and "No name yet" in two  # /login switching: name them
