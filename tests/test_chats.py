@@ -94,7 +94,7 @@ def cfg(home):
 
 
 def records(cfg) -> dict[str, dict]:
-    return {p.relative_to(cfg.store_repo).as_posix(): json.loads(p.read_text())
+    return {p.relative_to(cfg.store_repo).as_posix(): json.loads(p.read_text(encoding="utf-8"))
             for p in sorted(cfg.store_repo.rglob("records/**/*.json"))}
 
 
@@ -256,7 +256,9 @@ def test_account_choice_is_remembered_and_records_move(cfg, tmp_path):
     assert res.account == "work" and list(records(cfg)) == [f"records/{D.isoformat()}/dev1/work/chat-c1.json"]
     assert chats.import_chats(cfg, z).account == "work"  # remembered for this claude.ai login
     state = json.loads(chats.state_path().read_text())
-    assert ACCT not in json.dumps(state) and oct(chats.state_path().stat().st_mode)[-3:] == "600"
+    assert ACCT not in json.dumps(state)
+    if os.name != "nt":  # Windows has no Unix modes; files there are private to the user profile
+        assert oct(chats.state_path().stat().st_mode)[-3:] == "600"
 
 
 def test_cli_import_chats(cfg, tmp_path, capsys, monkeypatch):
@@ -308,7 +310,7 @@ def test_downloads_dir_from_xdg_user_dirs(home):
     from worklog.config import default_downloads_dir
     assert default_downloads_dir() == home / "Downloads"
     (home / ".config").mkdir(exist_ok=True)
-    (home / ".config/user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n')
+    (home / ".config/user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n', encoding="utf-8")
     assert default_downloads_dir() == home / "Téléchargements"
 
 

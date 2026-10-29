@@ -38,7 +38,7 @@ def system() -> str:
 def _run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     if demo_mode():
         raise RuntimeError("background services are disabled in demo mode")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
 
 
 def _python(windowless: bool = False) -> str:

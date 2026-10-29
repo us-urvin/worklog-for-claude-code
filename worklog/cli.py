@@ -23,7 +23,7 @@ def _setup_logging(verbose: bool, quiet: bool = False) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    fh = RotatingFileHandler(STATE_DIR / "worklog.log", maxBytes=1_000_000, backupCount=3)
+    fh = RotatingFileHandler(STATE_DIR / "worklog.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(fh)
     if not quiet:
@@ -68,7 +68,7 @@ def cmd_doctor(args) -> int:
     git_dir = cfg.store_repo / ".git"
     if git_dir.exists():
         remote = subprocess.run(["git", "-C", str(cfg.store_repo), "remote"],
-                                capture_output=True, text=True).stdout.strip()
+                                capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         print(f"✓ store repo: {cfg.store_repo} (remote: {remote or 'none — local only'})")
     else:
         ok = False
@@ -186,7 +186,7 @@ def ask_for_star(input_fn=input) -> None:
     if gh:  # the GitHub CLI, if you're logged in to it: star with your own account
         try:
             r = subprocess.run([gh, "api", "--silent", "--method", "PUT", f"/user/starred/{REPO}"],
-                               capture_output=True, text=True, timeout=20)
+                               capture_output=True, text=True, errors="replace", timeout=20)
             if r.returncode == 0:
                 print("  ⭐ Starred with your GitHub account. Thank you!")
                 return

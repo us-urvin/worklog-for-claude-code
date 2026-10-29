@@ -157,7 +157,7 @@ def upgrade(timeout: int = 300) -> tuple[bool, str]:
     if cmd is None:
         return False, f"Update this install by hand: {manual_command()}"
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"Update failed: {exc}. Try by hand: {manual_command()}"
     if r.returncode != 0:
@@ -170,7 +170,8 @@ def installed_version() -> str:
     """The version now on disk (after an upgrade it differs from the running __version__)."""
     try:
         r = subprocess.run([sys.executable, "-c", "import worklog; print(worklog.__version__)"],
-                           capture_output=True, text=True, timeout=30, cwd=str(Path.home()))
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+                           cwd=str(Path.home()))
         return r.stdout.strip() or __version__
     except (OSError, subprocess.TimeoutExpired):
         return __version__

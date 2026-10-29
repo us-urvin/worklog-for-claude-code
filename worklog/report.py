@@ -188,7 +188,8 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
         if cfg.summary_model:  # the background service doesn't see shell aliases or ANTHROPIC_MODEL
             cmd += ["--model", cfg.summary_model]
         out = subprocess.run(cmd, cwd=SUMMARIZER_CWD,
-                             env=_claude_env(cfg), capture_output=True, text=True, timeout=cfg.ai_timeout)
+                             env=_claude_env(cfg), capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=cfg.ai_timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.warning("claude -p failed for %s: %s", p.name, exc)
         return None

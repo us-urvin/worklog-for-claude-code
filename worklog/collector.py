@@ -54,7 +54,8 @@ def sanitize_remote(url: str) -> dict | None:
 
 def _git(root: Path, *args: str) -> str | None:
     try:
-        out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=15)
+        out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=15)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.debug("git %s failed in %s: %s", args[0], root, exc)
         return None

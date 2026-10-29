@@ -7,6 +7,7 @@ One command handles both events; it reads `hook_event_name` from stdin:
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import sys
@@ -30,8 +31,12 @@ def hook_command() -> str:
     return f"{_quote(exe)} hook" if exe else f"{_quote(sys.executable)} -m worklog.cli hook  # {HOOK_MARKER}"
 
 
+_OURS = re.compile(r"claude-worklog(?:\.exe)?['\"]?\s+hook\b|worklog\.cli\s+hook\b", re.IGNORECASE)
+
+
 def _is_ours(command: object) -> bool:
-    return isinstance(command, str) and (HOOK_MARKER in command or "worklog.cli hook" in command)
+    """Our hook, however it was written: plain, quoted, or `claude-worklog.EXE` on Windows."""
+    return isinstance(command, str) and bool(_OURS.search(command))
 
 
 def _events_in(settings: object) -> set[str]:

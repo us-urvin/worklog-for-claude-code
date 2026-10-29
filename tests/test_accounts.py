@@ -55,7 +55,8 @@ def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:
 
 
 def records(repo: Path) -> dict[str, dict]:
-    return {p.relative_to(repo).as_posix(): json.loads(p.read_text()) for p in sorted(repo.rglob("records/**/*.json"))}
+    return {p.relative_to(repo).as_posix(): json.loads(p.read_text(encoding="utf-8"))
+            for p in sorted(repo.rglob("records/**/*.json"))}
 
 
 def start_session(home: Path, sid: str, capsys=None) -> None:
@@ -108,7 +109,8 @@ def test_session_start_hook_records_account_privately(home, capsys):
     start_session(home, "sess-1")
     assert capsys.readouterr().out == ""  # SessionStart stdout would be injected into Claude's context
     state_file = home / ".local/state/claude-worklog/accounts.json"
-    assert (state_file.stat().st_mode & 0o777) == 0o600
+    if os.name != "nt":  # Windows has no Unix modes; files there are private to the user profile
+        assert (state_file.stat().st_mode & 0o777) == 0o600
     assert identity.session_logins()["sess-1"] == identity.Identity(UID_A, EMAIL_A)
     log_text = (home / ".local/state/claude-worklog/worklog.log").read_text()
     assert EMAIL_A not in log_text and UID_A not in log_text

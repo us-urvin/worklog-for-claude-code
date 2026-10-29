@@ -3,6 +3,7 @@
 System commands (systemctl, launchctl, schtasks) and the Windows registry are faked, so
 these tests run on any OS and never touch the real service manager.
 """
+import os
 import plistlib
 import subprocess
 import sys
@@ -53,7 +54,7 @@ def test_mac_install_writes_agents_and_loads_them(monkeypatch, fake, home):
     web = plistlib.loads((home / "Library/LaunchAgents/dev.worklog.web.plist").read_bytes())
     assert web["ProgramArguments"][-4:] == ["worklog.cli", "serve", "--port", "8765"]
     assert web["RunAtLoad"] is True and web["KeepAlive"] == {"SuccessfulExit": False}
-    path = web["EnvironmentVariables"]["PATH"].split(":")
+    path = web["EnvironmentVariables"]["PATH"].split(os.pathsep)  # built on this test machine
     assert "/opt/homebrew/bin" in path and str(home / ".local/bin") in path  # launchd has no shell PATH
     report = plistlib.loads((home / "Library/LaunchAgents/dev.worklog.report.plist").read_bytes())
     assert report["StartCalendarInterval"] == [{"Hour": 23, "Minute": 30}, {"Hour": 0, "Minute": 20}]
@@ -271,3 +272,13 @@ def test_star_question_does_nothing_on_no_or_without_a_terminal(star_env, monkey
     (checks._ui_state_path()).unlink()
     monkeypatch.setattr(cli, "_interactive", lambda: False)
     cli.ask_for_star(lambda prompt: pytest.fail("asked without a terminal"))
+
+
+def test_our_hook_is_recognised_in_every_form():
+    from worklog.hooks import _is_ours
+    for cmd in ("/usr/bin/claude-worklog hook", "'/Users/Jane Doe/.local/bin/claude-worklog' hook",
+                r'"C:\Users\Jane Doe\.local\bin\claude-worklog.EXE" hook', r"C:\x\claude-worklog.exe hook",
+                "/venv/bin/python -m worklog.cli hook  # claude-worklog hook"):
+        assert _is_ours(cmd), cmd
+    for cmd in ("some-other-tool", "claude-worklog-helper hook", "claude-worklog hooked", None):
+        assert not _is_ours(cmd), cmd

@@ -177,7 +177,7 @@ def default_downloads_dir() -> Path:
     dirs = _xdg("XDG_CONFIG_HOME", ".config") / "user-dirs.dirs"
     try:
         m = re.search(r'^XDG_DOWNLOAD_DIR="([^"]+)"', dirs.read_text(encoding="utf-8"), re.M)
-    except OSError:
+    except (OSError, UnicodeDecodeError):  # missing, or not UTF-8: fall back to ~/Downloads
         m = None
     if m:
         return Path(m.group(1).replace("$HOME", str(Path.home()))).expanduser()

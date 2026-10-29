@@ -49,7 +49,8 @@ class GitStore:
     def _git(self, *args: str, timeout: int = 60, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(
             ["git", "-C", str(self.path), *args],
-            capture_output=True, text=True, timeout=timeout, check=check, env=self._env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, check=check,
+            env=self._env,
         )
 
     def _has_remote(self) -> bool:

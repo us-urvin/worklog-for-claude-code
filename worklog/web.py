@@ -155,7 +155,7 @@ def _transcript_count(a: Account, cap: int = 5000) -> int:
 
 def _git_out(repo: Path, *args: str) -> str:
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         return r.stdout.strip() if r.returncode == 0 else ""
     except (OSError, subprocess.TimeoutExpired):
         return ""
@@ -1343,7 +1343,7 @@ class App:
             env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
             env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15")
             try:
-                r = subprocess.run(["git", "clone", "--", clone, str(store)], capture_output=True, text=True, timeout=120, env=env)
+                r = subprocess.run(["git", "clone", "--", clone, str(store)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=env)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 return None, f"git clone failed: {exc}", form
             if r.returncode != 0:
