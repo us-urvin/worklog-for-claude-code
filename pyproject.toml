@@ -35,7 +35,7 @@ dependencies = ['tomli>=2.0; python_version < "3.11"']
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
-dev = ["pytest>=7", "ruff==0.17.0", "build"]
+dev = ["pytest>=7", "ruff==0.17.3", "build"]
 
 [project.urls]
 Homepage = "https://github.com/us-urvin/worklog-for-claude-code"
