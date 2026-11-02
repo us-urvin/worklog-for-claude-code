@@ -9,6 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [0.3.2] - 2026-11-02
 
 ### Fixed
+- **Sync on computers without a git e-mail.** Downloading changes failed with "Committer identity unknown" when
+  `git config --global user.email` wasn't set, so nothing was uploaded either. Worklog now uses its own neutral
+  name for that step too.
+- **Changes left waiting now upload.** Commits from an earlier failed sync are pushed on the next sync, even when
+  there is nothing new.
+- **SSH nicknames** (`git@worklog-git:you/repo.git` from `~/.ssh/config`) no longer give a broken link like
+  `https://worklog-git/...`. Settings links to the real host, checks privacy there, and shows which key file is used.
 - **Update now** no longer says "already the newest version" right after a release. It skips pip's saved
   version list (`--no-cache-dir`), and if PyPI is still publishing the new version it says to try again in a few minutes.
 - The "new version is out" notice waits until a release is about 15 minutes old, so **Update now** can really get it.
@@ -16,6 +23,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - The update command shown on the page and in the docs is now `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`.
 
 ### Changed
+- **Buttons no longer reload the page or jump to the top.** Sync, Test connection, Write summaries, saving settings
+  and the rest work in place: a small card shows progress and the result, and the page keeps its scroll position.
+- **Popups for things that need a decision or a clear answer:** Forget a login opens its confirmation in a popup,
+  Remove account asks first, and Test connection shows its result in a popup.
+- **Test connection says which account signs in** (GitHub, GitLab, Bitbucket), and if that account can't see the
+  repo it says so. A new *Several GitHub accounts on this computer?* help in Settings explains the SSH-key setup,
+  and connection errors show the one line that matters.
 - Finished-job messages (like "Updated 178 session record(s)") close by themselves after 2 minutes (errors after 15),
   and each one has a ✕ to close it right away.
 - Upgraded from a terminal while Worklog was running? The page says the new version is installed and offers

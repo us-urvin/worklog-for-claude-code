@@ -198,3 +198,14 @@ def test_restart_banner_after_a_terminal_upgrade(ustate, repo, monkeypatch):
             break
         time.sleep(0.02)
     assert app.jobs.snapshot()["message"] == "Updated to 9.9.9. Restarting…" and restarted == [True]
+
+
+def test_script_sent_forms_get_answers_in_place(ustate, repo):
+    app = web.App(1)
+    assert web._fetch_answer(app, "/settings/watch", None, "Bad value") == {"ok": False, "error": "Bad value"}
+    assert web._fetch_answer(app, "/settings/watch", "/settings?ok=saved", None) == {
+        "ok": True, "message": web.OK_MESSAGES["saved"]}
+    assert web._fetch_answer(app, "/sync/test", "/settings?ok=job#data-repo", None)["job"]  # follow the job
+    app.jobs.start("Syncing", lambda: time.sleep(0.3) or "done")
+    busy = web._fetch_answer(app, "/sync/test", "/settings#data-repo", None)  # couldn't start: something else runs
+    assert busy["ok"] is False and "Syncing" in busy["error"]

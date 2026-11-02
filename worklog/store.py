@@ -57,11 +57,22 @@ class GitStore:
     def _has_remote(self) -> bool:
         return bool(self._git("remote", check=False).stdout.strip())
 
+    def _unpushed(self) -> bool:
+        """Commits that an earlier run couldn't upload (offline, or a failed pull) are still waiting."""
+        if not self._has_remote():
+            return False
+        r = self._git("rev-list", "--count", "@{u}..HEAD", check=False)
+        if r.returncode != 0:  # never pushed: anything committed is waiting
+            r = self._git("rev-list", "--count", "HEAD", check=False)
+        return r.returncode == 0 and r.stdout.strip() not in ("", "0")
+
     def pull(self) -> None:
         if not self._has_remote():
             return
         try:
-            self._git("pull", "--rebase", "--autostash", timeout=90)
+            # Replaying local commits on top of the remote ones writes new commits, so git needs a name
+            # here too: without it a computer with no `git config --global user.email` can never sync.
+            self._git(*_IDENTITY, "pull", "--rebase", "--autostash", timeout=90)
             syncstatus.record("pull", True)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             # Offline, empty repo, or first run: work locally, sync next time.
@@ -80,9 +91,10 @@ class GitStore:
             attrs.write_text("records/** text eol=lf\nreports/** text eol=lf\n", encoding="utf-8", newline="\n")
             dirs.append(".gitattributes")
         self._git("add", "-A", "--", *dirs)
-        if self._git("diff", "--cached", "--quiet", check=False).returncode == 0:
-            return  # nothing staged
-        self._git(*_IDENTITY, "commit", "-q", "-m", message)
+        if self._git("diff", "--cached", "--quiet", check=False).returncode != 0:
+            self._git(*_IDENTITY, "commit", "-q", "-m", message)
+        elif not self._unpushed():
+            return  # nothing new, and nothing left over from an earlier failed upload
         if not self._has_remote():
             log.info("committed locally (no remote configured)")
             return
