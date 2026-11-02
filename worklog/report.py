@@ -270,28 +270,80 @@ def _claude_env(cfg: Config) -> dict[str, str]:
     return env
 
 
-def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
+_SUMMARY_KEYS = ("line", "paragraph", "bullets", "tag", "next")
+
+
+def parse_summary(text: str) -> dict | None:
+    """Claude's answer -> {"line", "paragraph", "bullets", "tag", "next"}, or None if it is unusable.
+
+    Takes the JSON object even with text around it or in a code fence; falls back to "- " bullets
+    (how summaries were written before 0.4.0). Every string is redacted and length-capped.
+    """
+    from .tags import TAGS
+    out: dict | None = None
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        try:
+            data = json.loads(text[start:end + 1])
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            def clean(v, n):
+                return redact(" ".join(str(v).split()))[:n] if isinstance(v, str) and v.strip() else ""
+            def strings(v):
+                return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+            bullets = [clean(b, 400) for b in strings(data.get("bullets"))]
+            out = {"line": clean(data.get("line"), 160), "paragraph": clean(data.get("paragraph"), 900),
+                   "bullets": ["- " + b for b in bullets if b][:8],
+                   "tag": data.get("tag") if data.get("tag") in TAGS else "",
+                   "next": [clean(x, 200) for x in strings(data.get("next")) if x.strip()][:6]}
+            if not (out["line"] or out["paragraph"] or out["bullets"]):
+                out = None
+    if out is None:
+        bullets = [redact(line.strip())[:400] for line in text.splitlines() if line.strip().startswith(("- ", "* "))]
+        if not bullets:
+            return None
+        out = {"line": "", "paragraph": "", "bullets": ["- " + b[2:] for b in bullets], "tag": "", "next": []}
+    if not out["bullets"] and out["paragraph"]:
+        out["bullets"] = ["- " + out["paragraph"]]
+    if not out["line"]:
+        first = (out["paragraph"] or out["bullets"][0][2:]).split(". ")[0].rstrip(".")
+        out["line"] = first[:157] + "…" if len(first) > 158 else first
+    return out
+
+
+def ai_summary(p: ProjectDay, day: date, cfg: Config) -> dict | None:
+    """A plain-language summary of one project's day, written by `claude -p`, or None."""
     exe = shutil.which(cfg.claude_bin)
     if not exe:
         log.warning("claude binary %r not found; using plain summary", cfg.claude_bin)
         return None
     data = {
         "project": p.name, "kind": p.kind, "branches": sorted(p.branches), "folders": sorted(p.folders),
+        "minutes_worked": p.minutes, "likely_kind_of_work": p.tag,
         "chats": [{"title": c["title"], "your_messages": c["prompts"], "chat_summary": c["summary"]}
                   for c in p.chat_items],
         "prompts_in_order": [q for _, q in p.prompts],
+        "claude_todo_list": p.tasks,
         "commits": list(p.commits.values()), "files_edited": sorted(p.files)[:80],
     }
     if p.chat_items:
         data.pop("prompts_in_order")  # already grouped per chat
+    from .tags import TAGS
     blob = json.dumps(data, ensure_ascii=False)[:_MAX_AI_INPUT_CHARS]
     prompt = (
-        f"You are writing a developer's end-of-day work log for {day.isoformat()}. "
-        "The JSON below was extracted from their Claude Code sessions and/or claude.ai chats for ONE project. "
-        "Write 2-7 concise bullet points describing what was accomplished or investigated "
-        "(features implemented, bugs fixed, refactors, research). Past tense, no fluff. "
-        "Use ONLY the data given; if something is unclear, describe it generically rather than guess. "
-        "Output only the bullets, each line starting with '- '. Do not use any tools.\n\n"
+        f"You are writing a developer's work log for {day.isoformat()}. The JSON below was extracted from their "
+        "Claude Code sessions and/or claude.ai chats for ONE project. Describe what they got done or looked into.\n"
+        "Write in plain, simple English that a manager or client understands: short sentences, past tense, "
+        "no jargon or file paths unless they matter, no hype. Use ONLY the data given; if something is unclear, "
+        "describe it in general terms rather than guess. Do not use any tools.\n"
+        "Answer with ONE JSON object and nothing else:\n"
+        '{"line": "one line for a timesheet, at most 120 characters, e.g. \'Reviewed PRs #503 and #505; '
+        'triaged the mobile item-quantity bug\'",\n'
+        ' "paragraph": "2-4 plain sentences about the day\'s work on this project",\n'
+        ' "bullets": ["2-7 short points: what was built, fixed, reviewed or decided"],\n'
+        f' "tag": "one of: {", ".join(TAGS)}",\n'
+        ' "next": ["open items still to do, if the data shows any; else an empty list"]}\n\n'
         f"<data>\n{blob}\n</data>"
     )
     SUMMARIZER_CWD.mkdir(parents=True, exist_ok=True)  # excluded by the collector
@@ -308,9 +360,19 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
     if out.returncode != 0:
         log.warning("claude -p exited %d for %s: %s", out.returncode, p.name, out.stderr.strip()[:300])
         return None
-    bullets = [redact(line.strip())[:400] for line in out.stdout.splitlines()
-               if line.strip().startswith(("- ", "* "))]
-    return [("- " + b[2:]) for b in bullets] or None
+    parsed = parse_summary(out.stdout)
+    if parsed is None:
+        log.warning("claude -p gave no usable summary for %s", p.name)
+    return parsed
+
+
+def plain_line(p: ProjectDay) -> str:
+    """A one-line description without AI: the chat titles or the first prompt."""
+    if p.chat_items:
+        text = "; ".join(c["title"] for c in p.chat_items[:3])
+    else:
+        text = p.prompts[0][1].splitlines()[0] if p.prompts else "Work in Claude Code"
+    return text if len(text) <= 120 else text[:119].rsplit(" ", 1)[0] + "…"
 
 
 def chat_line(c: dict) -> str:
@@ -342,8 +404,12 @@ def _dur(minutes: int) -> str:
 def summarize_all(projects: dict[str, ProjectDay], day: date, cfg: Config, use_ai: bool) -> dict[str, dict]:
     out = {}
     for key, p in projects.items():
-        bullets = ai_summary(p, day, cfg) if use_ai else None
-        out[key] = {"bullets": bullets or plain_summary(p), "source": "ai" if bullets else "plain"}
+        smart = ai_summary(p, day, cfg) if use_ai else None
+        if smart:
+            out[key] = dict(smart, source="ai")
+        else:
+            out[key] = {"bullets": plain_summary(p), "source": "plain", "line": plain_line(p), "paragraph": "",
+                        "tag": "", "next": []}
     return out
 
 
@@ -393,12 +459,18 @@ def render(day: date, cfg: Config, accounts: dict, projects: dict[str, ProjectDa
         work = [f"{p.sessions} session(s)"] if p.sessions else []
         work += [f"{p.chats} chat(s)"] if p.chats else []
         tokens = f"{_n(sum(p.tokens.values()))} tokens" if p.sessions else "no token data"
-        out += [f"### {p.name}", "",
+        s = summaries.get(p.key) or {}
+        tag = s.get("tag") or p.tag
+        out += [f"### {p.name}" + (f" · {tag}" if tag else ""), "",
                 f"{where} · accounts: {', '.join(sorted(p.accounts))} · devices: {', '.join(sorted(p.devices))} · "
-                f"{' · '.join(work)} · {_dur(p.minutes)} span · {tokens} · "
+                f"{' · '.join(work)} · {'≈' if p.approx else ''}{_dur(p.minutes)} · {tokens} · "
                 f"{len(p.files)} file(s) edited · {len(p.commits)} commit(s)", ""]
-        out += summaries.get(p.key, {}).get("bullets") or plain_summary(p)
+        if s.get("paragraph"):
+            out += [s["paragraph"], ""]
+        out += s.get("bullets") or plain_summary(p)
         out += [""]
+        if p.tasks:
+            out += ["Tasks:", ""] + [f"- [{'x' if t['status'] == 'done' else ' '}] {t['text']}" for t in p.tasks] + [""]
         if p.chat_items and summaries.get(p.key):  # AI bullets above; still list the chats themselves
             out += ["Chats:", ""] + [f"- {chat_line(c)}" for c in p.chat_items] + [""]
         if p.commits:

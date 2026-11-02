@@ -297,3 +297,26 @@ def test_tag_rules():
     assert t(["add a timesheet page"], ["worklog/web.py"]) == "Feature"
     assert t(["refactor the parser"], ["worklog/parser.py"]) == "Refactor"
     assert tag_session({"source": "claude.ai"}) == "Chat"
+
+
+# ------------------------------------------------------------------ plain-language summaries
+from worklog.report import parse_summary  # noqa: E402
+
+
+def test_summary_json_is_read_even_with_text_around_it():
+    answer = ('Here you go:\n```json\n{"line": "Reviewed PRs #503 and #505; triaged the mobile qty bug",'
+              ' "paragraph": "Reviewed two pull requests and posted comments.", "bullets": ["Reviewed PR #503",'
+              ' "Posted a comment on PR #505"], "tag": "Review", "next": ["Confirm the qty bug with Priti"]}\n```')
+    s = parse_summary(answer)
+    assert s["line"].startswith("Reviewed PRs #503") and s["tag"] == "Review"
+    assert s["bullets"] == ["- Reviewed PR #503", "- Posted a comment on PR #505"]
+    assert s["next"] == ["Confirm the qty bug with Priti"]
+
+
+def test_summary_falls_back_and_never_trusts_odd_values():
+    assert parse_summary("- did a thing\n- and another") == {
+        "line": "did a thing", "paragraph": "", "bullets": ["- did a thing", "- and another"], "tag": "", "next": []}
+    s = parse_summary('{"paragraph": "Fixed the login. Then tidied up.", "tag": "Hacking", "bullets": "nope"}')
+    assert s["tag"] == "" and s["line"] == "Fixed the login" and s["bullets"] == ["- Fixed the login. Then tidied up."]
+    assert parse_summary("sorry, I can't") is None and parse_summary("{broken json") is None
+    assert "sk-ant" not in parse_summary('{"line": "used key sk-ant-api03-abcdefghijklmnopqrstu"}')["line"]
