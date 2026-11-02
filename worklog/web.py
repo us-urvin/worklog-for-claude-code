@@ -48,6 +48,7 @@ from .report import (
     aggregate,
     build_report,
     legacy_fit,
+    model_label,
     model_rows,
     pick_summary,
     plain_summary,
@@ -405,6 +406,12 @@ border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;ani
 .pill.tag{color:var(--accent-2);border-color:color-mix(in srgb,var(--accent-2) 45%,transparent)}
 a.btn.edit{padding:5px 12px;font-size:.82rem}
 .para{margin:8px 0 6px;max-width:72ch;font-size:1rem}.entry details{margin-top:6px}
+img.sharecard{width:100%;height:auto;border-radius:16px;border:1px solid var(--rule);display:block}
+.goals{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 18px}.goal{display:flex;gap:12px;align-items:center;padding:10px 14px;
+border-radius:16px;background:var(--glass);border:1px solid var(--rule)}.goal.bad{border-color:var(--bad)}
+.gring{width:52px;height:52px}.gring .track{fill:none;stroke:var(--glass-hi);stroke-width:4}
+.gring .fill{fill:none;stroke:var(--accent-2);stroke-width:4;stroke-linecap:round}.goal.bad .gring .fill{stroke:var(--bad)}
+.gring text{font:800 8px/1 system-ui,sans-serif;fill:var(--ink)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .askbox{display:flex;gap:8px;margin:0 0 18px}.askbox input{max-width:none;flex:1}.askbox.compact{margin:14px 0 18px}
 .leaveoff h2{font-size:1rem;margin:0 0 10px}.leaves{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}
@@ -483,6 +490,7 @@ if(t-t0<2200){requestAnimationFrame(frame)}else{c.remove()}})(t0)}
 function seen(k){try{var s=JSON.parse(localStorage.getItem('worklog.cheers')||'[]');if(s.indexOf(k)>=0)return true;s.push(k);localStorage.setItem('worklog.cheers',JSON.stringify(s.slice(-200)));return false}catch(e){return false}}
 if(fun){var lines=[];var f=document.getElementById('fun');if(f&&f.dataset.celebrate)lines=lines.concat(f.dataset.celebrate.split('\\n'));
 document.querySelectorAll('.banner[data-celebrate]').forEach(function(b){lines.push(b.dataset.celebrate)});
+document.querySelectorAll('[data-badge-new]').forEach(function(b){var p=b.dataset.badgeNew.split('|');lines.push('badge:'+p[0]+'|🏅 New badge: '+p[1])});
 var first=true;lines.forEach(function(l){if(!l)return;var i=l.indexOf('|'),k=l.slice(0,i),msg=l.slice(i+1);if(seen(k))return;
 setTimeout(function(){confetti();toast(msg)},first?500:2600);first=false})}
 if(fun){var code=['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'],buf=[],typed='',timer=null;
@@ -498,6 +506,12 @@ var s=window.getSelection();s.removeAllRanges();s.addRange(r)}say(navigator.plat
 if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(b.dataset.copy).then(function(){say('Copied!')},manual)}else{manual()}});
 var W=window.worklog={};
 W.init=function(){
+(function(){var b=document.getElementById('sharepng'),img=document.getElementById('sharecard');if(!b||!img)return;
+b.addEventListener('click',function(){var c=document.createElement('canvas');c.width=1200;c.height=630;
+var draw=function(){c.getContext('2d').drawImage(img,0,0,1200,630);c.toBlob(function(blob){if(!blob){location.href=img.src;return}
+var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=b.dataset.name||'worklog.png';document.body.appendChild(a);
+a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)},'image/png')};
+if(img.complete){draw()}else{img.addEventListener('load',draw,{once:true})}})})();
 (function(){var r=document.getElementById('ts-range');if(!r)return;function sync(){document.querySelectorAll('.tsform .custom')
 .forEach(function(x){x.hidden=r.value!=='custom'})}r.addEventListener('change',sync);sync()})();
 (function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
@@ -891,6 +905,34 @@ def _leave_off_html(items: list[dict], cfg: Config) -> str:
             f'<div class="leaves">{"".join(cards)}</div></section>')
 
 
+def _goal_html(cache, day: date, cfg: Config) -> str:
+    from . import insights
+    goals = {"hours": cfg.goal_hours, "tokens": cfg.goal_tokens}
+    g = insights.goal_progress(cache.days(day - timedelta(days=120), day), day, goals)
+    if not g:
+        return ""
+    parts = []
+    if "hours" in g:
+        h = g["hours"]
+        parts.append(f'<div class="goal">{_ring_pct(h["share"])}<div><b>{_dur(h["done"])} of {h["target"] / 60:g}h</b>'
+                     f'<div class="muted">today&#39;s goal'
+                     + (f' · {g["streak"]}-day goal streak' if g.get("streak", 0) >= 2 else "") + "</div></div></div>")
+    if "tokens" in g:
+        t = g["tokens"]
+        warn = " bad" if t["share"] >= 0.8 else ""
+        parts.append(f'<div class="goal{warn}">{_ring_pct(min(1.0, t["share"]))}<div><b>{_short(t["used"])} of '
+                     f'{_short(int(t["limit"]))} tokens</b><div class="muted">this week'
+                     + (" · close to your limit" if t["share"] >= 0.8 else "") + "</div></div></div>")
+    return f'<div class="goals" aria-label="Goals">{"".join(parts)}</div>'
+
+
+def _ring_pct(share: float) -> str:
+    pct = max(0, min(100, round(share * 100)))
+    return (f'<svg class="gring" viewBox="0 0 36 36" role="img" aria-label="{pct}%"><circle class="track" cx="18" cy="18" '
+            f'r="15.9"/><circle class="fill" cx="18" cy="18" r="15.9" stroke-dasharray="{pct} 100" '
+            f'transform="rotate(-90 18 18)"/><text x="18" y="21" text-anchor="middle">{pct}%</text></svg>')
+
+
 def _remote_of(key: str) -> dict | None:
     if "/" in key and ":" not in key.split("/", 1)[0]:
         host, slug = key.split("/", 1)
@@ -987,11 +1029,110 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
               f'<a class="btn quiet" href="/share?what={word}&d={anchor.isoformat()}">Share this {word}</a></p>')
 
 
+def _share_period(cfg: Config, store, q: dict):
+    """(what, start, end, period, streak, names) for the share card from the address bar."""
+    from . import insights
+    what = q.get("what") if q.get("what") in ("day", "week", "month", "year") else "week"
+    today = date.today()
+    anchor = min(_parse_date(q.get("d")) or today, today)
+    if what == "day":
+        start = end = anchor
+    elif what == "week":
+        start = anchor - timedelta(days=anchor.weekday())
+        end = start + timedelta(days=6)
+    elif what == "month":
+        start = anchor.replace(day=1)
+        end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    else:
+        start, end = date(anchor.year, 1, 1), date(anchor.year, 12, 31)
+    cache = daycache.DayCache(store, cfg.time_mode)
+    entries = cache.days(max(start, today - timedelta(days=399)), min(end, today))
+    span = cache.days(min(end, today) - timedelta(days=120), min(end, today))
+    cache.save()
+    p = insights.period(entries, start, min(end, today), cfg.cost_custom)
+    streak = viz.streak({d for d, x in span.items() if x.get("n")}, min(end, today))
+    return what, start, end, p, streak, q.get("names") == "1"
+
+
+def page_share(app: App, cfg: Config, q: dict) -> str:
+    from . import share
+    store = _store(cfg)
+    if store is None:
+        return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
+    what, start, end, p, streak, names = _share_period(cfg, store, q)
+    title, sub = share.titles(what, start, end)
+    params = f"what={what}&d={start.isoformat()}" + ("&names=1" if names else "")
+    opts = "".join(f'<option value="{v}"{" selected" if v == what else ""}>{n}</option>'
+                   for v, n in (("day", "A day"), ("week", "A week"), ("month", "A month"), ("year", "A year")))
+    form = (f'<form method="get" action="/share" class="tsform"><div><label for="sh-what">Share</label>'
+            f'<select id="sh-what" name="what">{opts}</select></div><div><label for="sh-d">Including</label>'
+            f'<input type="date" id="sh-d" name="d" value="{start.isoformat()}" max="{date.today().isoformat()}"></div>'
+            f'<div class="check"><input type="checkbox" id="sh-names" name="names" value="1"{" checked" if names else ""}>'
+            f'<label for="sh-names">Show project names</label></div><div><button>Show</button></div></form>')
+    text = share.text_line(title, sub, p, streak)
+    return (f'<div class="daynav"><h1><span class="grad">Share</span><small>{e(sub)}</small></h1></div>' + form
+            + f'<section class="block"><img class="sharecard" id="sharecard" src="/share.svg?{e(params)}" width="1200" '
+              f'height="630" alt="{e(text)}"><div class="row">'
+              f'<button type="button" id="sharepng" data-name="worklog-{e(what)}-{start.isoformat()}.png">⬇ Download PNG</button>'
+              f'<a class="btn quiet" href="/share.svg?{e(params)}" download="worklog-{e(what)}-{start.isoformat()}.svg">SVG</a>'
+              f'<button type="button" class="quiet copy" data-copy="{e(text)}">Copy text</button></div>'
+              f'<p class="muted" style="font-size:.85rem">Only totals are shown: no prompts, files, accounts or '
+              f'e-mails. Project names only if you tick them.</p></section>')
+
+
+def page_year(app: App, cfg: Config, q: dict) -> str:
+    from . import cost, insights
+    store = _store(cfg)
+    if store is None:
+        return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
+    today = date.today()
+    try:
+        year = int(q.get("y") or today.year)
+    except ValueError:
+        year = today.year
+    year = max(2020, min(year, today.year))
+    cache = daycache.DayCache(store, cfg.time_mode)
+    start = max(date(year, 1, 1), today - timedelta(days=399))
+    entries = cache.days(start, min(date(year, 12, 31), today))
+    cache.save()
+    y = insights.year_review(entries, year, cfg.cost_custom)
+    p = y["period"]
+    tiles = [("Hours", _dur(p.minutes)), ("Days worked", str(p.days_active)), ("Sessions", str(p.sessions)),
+             ("At API prices", "≈ " + cost.money(p.dollars))]
+    months = viz.column_bars([(date(year, i + 1, 1).strftime("%b"), m, False,
+                               f"/trends?view=month&d={date(year, i + 1, 1).isoformat()}") for i, m in enumerate(y["months"])])
+    facts = []
+    if y["busiest"][1]:
+        facts.append(f'Busiest day: <a href="/?d={y["busiest"][1].isoformat()}">{y["busiest"][1]:%A %d %B}</a> '
+                     f'({_dur(y["busiest"][0])})')
+    if y["longest_streak"]:
+        facts.append(f'Longest streak: {y["longest_streak"]} days in a row')
+    if y["top_model"]:
+        facts.append(f'Favourite model: {e(model_label(y["top_model"]))}')
+    if p.refs:
+        facts.append(f'{len(p.refs)} pull requests and tickets')
+    nav = (f'<div class="arrows"><a class="btn quiet" href="/year?y={year - 1}" aria-label="Earlier">‹</a>'
+           + (f'<a class="btn quiet" href="/year?y={year + 1}" aria-label="Later">›</a>' if year < today.year else "")
+           + "</div>")
+    badges = [b for b in insights.badges(entries) if b["earned"] and b["earned"].year == year]
+    return (f'<div class="daynav"><h1><span class="grad">Your {year}</span><small>in review</small></h1>{nav}</div>'
+            + '<div class="tiles">' + "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{e(v)}</div></div>'
+                                              for k, v in tiles) + "</div>"
+            + f'<div class="strip"><div class="legend"><span>Hours per month</span></div>{months}</div>'
+            + '<div class="insights">'
+            + f'<div class="panel"><h2>Top projects</h2>{viz.project_bars(y["top_projects"]) or "<p class=muted>None yet.</p>"}</div>'
+            + f'<div class="panel"><h2>Kind of work</h2>{viz.project_bars(y["top_tags"]) or "<p class=muted>Needs summaries.</p>"}</div>'
+            + f'<div class="panel"><h2>Highlights</h2><ul class="said">{"".join(f"<li>{x}</li>" for x in facts)}</ul></div></div>'
+            + (_badges_html(badges, cfg) if badges and cfg.fun else "")
+            + f'<p class="row"><a class="btn" href="/share?what=year&d={year}-01-01">Share your year</a></p>')
+
+
 def _badges_html(items: list[dict], cfg: Config) -> str:
     got = [b for b in items if b["earned"]]
     cells = "".join(
         f'<li class="badge{" on" if b["earned"] else ""}" title="{e(b["desc"])}"'
-        + (f' data-badge="{e(b["id"])}|{e(b["name"])}"' if b["earned"] else "")
+        + (f' data-badge-new="{e(b["id"])}|{e(b["name"])}"'
+           if b["earned"] and (date.today() - b["earned"]).days <= 7 else "")
         + f'><span class="be" aria-hidden="true">{b["emoji"]}</span><b>{e(b["name"])}</b>'
           f'<span class="muted">{e(b["desc"])}' + (f' · {b["earned"]:%d %b %Y}' if b["earned"] else "") + "</span></li>"
         for b in items)
@@ -1341,11 +1482,12 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
     leave = ""
+    goal = _goal_html(cache, day, cfg) if day == date.today() else ""
     if day == date.today():
         from . import insights as _ins
         leave = _leave_off_html(_ins.leave_off(cache.days(day - timedelta(days=13), day)), cfg)
         cache.save()
-    body = (head + edit_html + _ask_box(compact=True) + leave + lede + _chart(chart_history, names, day, chat_counts)
+    body = (head + edit_html + _ask_box(compact=True) + goal + leave + lede + _chart(chart_history, names, day, chat_counts)
             + actions + insights
             + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>' + party)
     return body, None
@@ -1795,6 +1937,17 @@ its own key and a nickname:</p>
 that blocks SSH (port 22), use <code>HostName ssh.github.com</code> and add <code>Port 443</code>.</p></details>"""
 
 
+def _write_digest(cfg: Config, store) -> str:
+    from . import digest
+    with store.lock():
+        store.pull()
+        changed = digest.write(cfg, store)
+        if changed:
+            store.commit_and_push(f"phone summary from {cfg.device}")
+    return "Phone summary written. Open your data repo's phone folder in the GitHub app." if changed else \
+        "The phone summary is already up to date."
+
+
 def settings_extras(app: App, cfg: Config) -> str:
     """Settings added in 0.5.0: ticket links (and, below, goals and the phone summary)."""
     from . import cost
@@ -1808,7 +1961,40 @@ Pull request numbers (<code>#505</code>) link to the project's repo by themselve
 <p class="muted" style="font-size:.85rem">“At API prices” on the cards estimates what the tokens would cost at Anthropic&#39;s API
 prices (as of {cost.PRICES_AS_OF}). On Pro and Max plans usage counts against your limits instead. Other prices can be set in the
 <code>[cost]</code> section of the config file.</p>
-<div class="row"><button>Save changes</button></div></form></section>"""
+<div class="row"><button>Save changes</button></div></form></section>
+<section class="block" id="goals"><h2>Goals</h2>
+<form method="post" action="/settings/goals">{c}
+<p class="help">A ring on Today shows how close you are. Leave a goal at 0 to turn it off.</p>
+<label for="g-hours">Hours of work per day</label>
+<input type="number" id="g-hours" name="hours" min="0" max="24" step="0.5" value="{cfg.goal_hours:g}">
+<label for="g-tokens">Weekly token limit (Monday to Sunday)</label>
+<input type="number" id="g-tokens" name="tokens" min="0" step="1000000" value="{cfg.goal_tokens}" style="max-width:220px">
+<p class="muted" style="font-size:.85rem">Useful to stay inside a plan&#39;s limits: Today warns at 80%.</p>
+<div class="row"><button>Save changes</button></div></form></section>
+{_phone_html(app, cfg)}"""
+
+
+def _phone_html(app: App, cfg: Config) -> str:
+    """Settings → Phone: the summary page in the data repo, read in the GitHub app."""
+    from . import digest
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    r = syncstatus.remote(cfg)
+    where = (f'<a href="https://{e(r["host"])}/{e(r["slug"])}/tree/HEAD/phone" target="_blank" rel="noopener noreferrer">'
+             f'{e(r["host"])}/{e(r["slug"])}/phone ↗</a>') if r else "the <code>phone</code> folder of your data repo"
+    other = digest.other_writer(cfg.store_repo, cfg.device, date.today())
+    state = ('<span class="pill ok">On: this computer writes it</span>' if cfg.phone_digest else
+             f'<span class="pill">Written by {e(other)}</span>' if other else '<span class="pill">Off</span>')
+    button = ("" if other and not cfg.phone_digest else
+              f'<input type="hidden" name="on" value="{"0" if cfg.phone_digest else "1"}">'
+              f'<button{" class=quiet" if cfg.phone_digest else ""}>'
+              f'{"Stop writing it here" if cfg.phone_digest else "Write it from this computer"}</button>')
+    return f"""<section class="block" id="phone"><h2>On your phone</h2>
+<div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">{state}</div>
+<p class="help" style="margin-top:10px">Worklog can keep a short summary in your private data repo: today, yesterday, this week&#39;s
+timesheet, open tasks and where you left off. Open the <b>GitHub app</b> on your phone, go to your data repo and tap the
+<code>phone</code> folder ({where}). Only you can see it, because the repo is private.</p>
+<p class="muted" style="font-size:.85rem">Turn this on for one computer only. It updates after each sync.</p>
+<form method="post" action="/settings/phone">{c}{button}</form></section>"""
 
 
 def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
@@ -2059,6 +2245,31 @@ class App:
             except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                 return None, str(exc), form
             return "/settings?ok=saved", None, form
+        if path == "/settings/goals":
+            try:
+                hours = float(form.get("hours") or 0)
+                tokens = int(float(form.get("tokens") or 0))
+            except ValueError:
+                return None, "Goals: use numbers, such as 4 hours or 40000000 tokens.", form
+            if not 0 <= hours <= 24 or not 0 <= tokens <= 10_000_000_000:
+                return None, "Goals: hours go from 0 to 24.", form
+            cfg.goal_hours, cfg.goal_tokens = hours, tokens
+            return self._save(cfg, "saved")
+        if path == "/settings/phone":
+            from . import digest
+            on = form.get("on") == "1"
+            other = digest.other_writer(cfg.store_repo, cfg.device, date.today())
+            if on and other:
+                return None, (f"{other} already writes the phone summary. Turn it off there first, so two computers "
+                              "never edit the same file."), form
+            cfg.phone_digest = on
+            loc, err, kept = self._save(cfg, "saved")
+            if err is None and on:
+                store = _store(cfg)
+                if store is not None:
+                    self.jobs.start("Writing the phone summary", lambda: _write_digest(cfg, store))
+                    return "/settings?ok=job#phone", None, kept
+            return loc, err, kept
         if path == "/settings/links":
             value = form.get("tracker", "").strip()
             if value and not re.match(r"^https?://[^\s\"'<>]{3,300}$", value):
@@ -2544,6 +2755,18 @@ def make_handler(app: App):
                 if url.path == "/settings":
                     forget_ref = q.get("forget") if re.fullmatch(r"[0-9a-f]{12}", q.get("forget", "")) else None
                     return self._page("Settings", page_settings(app, cfg, forget_ref), "settings", q.get("ok"))
+                if url.path == "/share":
+                    return self._page("Share", page_share(app, cfg, q), "trends", q.get("ok"))
+                if url.path == "/share.svg":
+                    from . import share
+                    store = _store(cfg)
+                    if store is None:
+                        return self._send(404, "No data repo", "text/plain")
+                    what, start, end, per, streak, names = _share_period(cfg, store, q)
+                    return self._send(200, share.card(*share.titles(what, start, end), per, streak, names),
+                                      "image/svg+xml")
+                if url.path == "/year":
+                    return self._page("Year", page_year(app, cfg, q), "trends", q.get("ok"))
                 if url.path == "/trends":
                     return self._page("Trends", page_trends(app, cfg, q), "trends", q.get("ok"))
                 if url.path == "/ask":

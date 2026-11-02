@@ -128,3 +128,69 @@ def test_trends_and_ask_pages(two_weeks, home, monkeypatch):
     if TODAY == monday:
         assert "Where you left off" in body
     assert 'action="/ask"' in body
+
+
+# ------------------------------------------------------------------ phone summary, share card, year, settings
+from worklog import digest, share  # noqa: E402
+
+
+def test_phone_summary_is_small_private_and_single_writer(two_weeks, home):
+    from test_accounts import make_cfg
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    cfg.device = "Office"
+    assert digest.write(cfg, store) is False  # off by default
+    cfg.phone_digest = True
+    assert digest.write(cfg, store, today=TODAY) is True
+    text = (store.path / "phone/README.md").read_text()
+    assert text.startswith("<!-- worklog-phone device=Office") and "## This week" in text
+    assert "| Day | Project |" in text
+    assert "Confirm qty bug with Priti" in text and len(text.encode()) <= digest.MAX_BYTES
+    assert "sk-ant" not in text and "@" not in text
+    assert digest.write(cfg, store, today=TODAY) is False  # nothing new: no change, so no commit
+    assert digest.other_writer(store.path, "Home", TODAY) == "Office"  # a second computer is refused
+    assert digest.other_writer(store.path, "Home", TODAY + timedelta(days=5)) is None  # an old one isn't
+    cfg.device = "Home"
+    assert digest.write(cfg, store, today=TODAY) is False
+    assert not (store.path / "README.md").exists()  # the repo's own README is never touched
+
+
+def test_share_card_shows_totals_only(two_weeks, home, monkeypatch):
+    from test_accounts import make_cfg
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    _, start, end, p, streak, names = web._share_period(cfg, store, {"what": "week", "d": monday.isoformat()})
+    svg = share.card(*share.titles("week", start, end), p, streak, names)
+    import xml.dom.minidom
+    xml.dom.minidom.parseString(svg)
+    assert "xoo" not in svg and "mic" not in svg and "http" not in svg.replace("http://www.w3.org/2000/svg", "")
+    named = share.card(*share.titles("week", start, end), p, streak, True)
+    assert "Top projects: xoo" in named
+    assert "<script" not in share.card("<script>", "x", p) and "&lt;script&gt;" in share.card("<script>", "x", p)
+    html = web.page_share(web.App(1), cfg, {"what": "week", "d": monday.isoformat()})
+    assert 'src="/share.svg?what=week' in html and "Download PNG" in html
+
+
+def test_year_page_and_settings(two_weeks, home, monkeypatch):
+    from test_accounts import make_cfg
+
+    from worklog.config import load_config
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
+    app = web.App(1)
+    html = web.page_year(app, cfg, {"y": str(monday.year)})
+    assert f"Your {monday.year}" in html and "Hours per month" in html and "Top projects" in html
+    assert web.page_year(app, cfg, {"y": "nonsense"})  # falls back to this year
+    assert app.post("/settings/goals", {"hours": "4", "tokens": "50000000"})[1] is None
+    cfg = load_config(cfg.path)
+    assert cfg.goal_hours == 4 and cfg.goal_tokens == 50_000_000
+    assert app.post("/settings/goals", {"hours": "30"})[1].startswith("Goals")
+    body, _ = web.page_day(app, cfg, TODAY)
+    if store.path.joinpath("records", TODAY.isoformat()).exists():
+        assert 'class="goals"' in body
+    digest_file = store.path / "phone/README.md"
+    digest_file.parent.mkdir(parents=True, exist_ok=True)
+    digest_file.write_text(f"<!-- worklog-phone device=Home wrote={TODAY.isoformat()} -->\n")
+    err = app.post("/settings/phone", {"on": "1"})[1]
+    assert err and "Home already writes" in err

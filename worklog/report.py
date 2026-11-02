@@ -577,6 +577,8 @@ def build_report(cfg: Config, day: date, use_ai: bool, write: bool) -> tuple[str
         store.pull()
         store.write_text(rel, text)
         store.write_json(f"reports/{day.isoformat()}/{cfg.device}.json", meta)
+        from . import digest
+        digest.write(cfg, store)
         store.commit_and_push(f"report {day.isoformat()} ({cfg.device})")
     return text, str(cfg.store_repo / rel)
 

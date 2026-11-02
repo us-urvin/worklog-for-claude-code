@@ -128,6 +128,9 @@ class Config:
     time_mode: str = "active"  # [report] time: "active" (breaks over 15 min don't count) or "wall"
     tracker_url: str = ""  # [links] tracker: Jira-style tickets link to tracker_url + "XOO2-295"
     cost_custom: dict = field(default_factory=dict)  # [cost] model id = [input, output] per million tokens
+    phone_digest: bool = False  # [phone] digest: this computer writes phone/README.md for the GitHub app
+    goal_hours: float = 0.0  # [goals] hours: focused hours per day (0 = no goal)
+    goal_tokens: int = 0  # [goals] weekly_tokens: a weekly token limit to stay under (0 = none)
     chat_account: str | None = None
     watch_downloads: bool = False
     downloads_dir: Path | None = None
@@ -228,6 +231,13 @@ def _model(v: object) -> str:
     return v
 
 
+def _number(table: dict, key: str, lo: float, hi: float) -> float:
+    v = table.get(key, 0)
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+        raise ConfigError(f"[goals] {key} must be a number between {lo:g} and {hi:g}")
+    return float(v)
+
+
 def _tracker(v: object) -> str:
     v = str(v or "").strip()
     if v and not re.match(r"^https?://[^\s\"'<>]+$", v):
@@ -325,6 +335,9 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         time_mode="wall" if rep.get("time") == "wall" else "active",
         tracker_url=_tracker(_table(raw, "links").get("tracker")),
         cost_custom=_costs(_table(raw, "cost")),
+        phone_digest=bool(_table(raw, "phone").get("digest", False)),
+        goal_hours=_number(_table(raw, "goals"), "hours", 0, 24),
+        goal_tokens=int(_number(_table(raw, "goals"), "weekly_tokens", 0, 10_000_000_000)),
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
@@ -390,7 +403,9 @@ def dump_config(cfg: Config) -> str:
             f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",
             "[watch]", f"auto_setup = {b(cfg.auto_setup)}", "",
             "[ui]", f"fun = {b(cfg.fun)}", f"check_updates = {b(cfg.check_updates)}", "",
-            "[links]", f"tracker = {q(cfg.tracker_url)}", ""]
+            "[links]", f"tracker = {q(cfg.tracker_url)}", "",
+            "[phone]", f"digest = {b(cfg.phone_digest)}", "",
+            "[goals]", f"hours = {cfg.goal_hours:g}", f"weekly_tokens = {cfg.goal_tokens}", ""]
     if cfg.cost_custom:
         out += ["[cost]"] + [f"{q(m)} = [{i}, {o}]" for m, (i, o) in sorted(cfg.cost_custom.items())] + [""]
     return "\n".join(out)
