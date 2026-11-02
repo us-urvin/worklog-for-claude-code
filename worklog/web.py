@@ -23,7 +23,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from . import __version__, chats, checks, forget, overrides, services, syncstatus, updates, viz, watcher
 from .collector import collect
@@ -44,8 +44,18 @@ from .config import (
 )
 from .hooks import hook_installed, install_hook
 from .identity import detected_logins, mask_email
-from .report import aggregate, build_report, load_saved_summaries, model_rows, plain_summary
+from .report import (
+    aggregate,
+    build_report,
+    load_saved_summaries,
+    model_rows,
+    plain_line,
+    plain_summary,
+    project_key,
+    project_title,
+)
 from .store import GitStore
+from .tags import TAGS
 
 log = logging.getLogger(__name__)
 DEFAULT_PORT = 8765
@@ -72,6 +82,9 @@ OK_MESSAGES = {
     "named": "Login named. Its sessions from the last 30 days are being moved to that account now.",
     "job": "Started. This page updates when it finishes.",
     "chat_saved": "Chat import settings saved.",
+    "edited": "Saved. Your changes sync to your other computers too.",
+    "guess_yes": "Moved. Press Write summaries to update the summary.",
+    "guess_no": "Got it. Those sessions stay where they are.",
 }
 
 
@@ -375,6 +388,31 @@ dialog.dlg.bad h2{color:var(--bad)}dialog.dlg.ok{border-color:color-mix(in srgb,
 dialog.dlg .forget-body ul{padding-left:1.2em}dialog.dlg .row:last-child:empty{display:none}
 button.busy{position:relative;color:transparent!important}button.busy::after{content:"";position:absolute;inset:0;margin:auto;width:16px;height:16px;
 border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;animation:spin .8s linear infinite}
+.cardhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.cardhead h3{margin-right:auto}
+.pill.tag{color:var(--accent-2);border-color:color-mix(in srgb,var(--accent-2) 45%,transparent)}
+a.btn.edit{padding:5px 12px;font-size:.82rem}
+.para{margin:8px 0 6px;max-width:72ch;font-size:1rem}.entry details{margin-top:6px}
+.tline{font-size:.88rem;margin:8px 0;padding:8px 12px;border-radius:12px;background:var(--glass-hi);border:1px solid var(--rule);
+max-width:72ch;overflow-wrap:anywhere}
+.guess{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px 12px;border-radius:14px;
+border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--rule));background:var(--glass-hi)}
+.guess>span:first-child{flex:1 1 240px}.guess .acts{display:flex;gap:8px}.guess form{margin:0}.guess button{padding:6px 12px}
+.tasks{margin:12px 0;padding:10px 14px;border-radius:14px;background:var(--glass-hi);border:1px solid var(--rule)}
+.taskhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.taskhead .acts{margin-left:auto;display:flex;gap:6px}
+.taskhead button{padding:4px 10px;font-size:.8rem}
+.tasks ul{list-style:none;padding:0;margin:8px 0 0}.tasks li{margin:4px 0}.tasks li.done{color:var(--muted)}
+.edit-card label:first-of-type{margin-top:4px}.edit-card .help{margin:4px 0 0!important;font-size:.85rem}
+fieldset.sessions{border:1px solid var(--rule);border-radius:12px;margin:14px 0 0;padding:6px 12px}
+fieldset.sessions legend{font-size:.88rem;font-weight:600;padding:0 6px}fieldset.sessions .check{margin:8px 0}
+dialog.dlg .popup-body label{margin-top:12px}dialog.dlg .popup-body input[type=text],dialog.dlg .popup-body select{max-width:none}
+.tsform{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:flex-end;margin:16px 0 18px}.tsform label{margin:0 0 6px}
+.tsform select,.tsform input[type=date]{width:auto}.tsform .check{margin:0 0 10px}
+table.sheet td{white-space:normal;vertical-align:top}table.sheet td:first-child{white-space:nowrap}
+table.sheet .num{text-align:right;white-space:nowrap}table.sheet td.sum{min-width:260px;text-align:left}
+table.sheet th{text-align:left}table.sheet tfoot td{border-top:2px solid var(--rule);font-weight:700}
+.exports{margin:0 0 14px}
+ul.totals{list-style:none;margin:0;padding:0}ul.totals li{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--rule)}
+ul.totals li:last-child{border-bottom:0}ul.totals b{margin-left:auto}
 details.help-more{margin-top:16px}details.help-more ol{padding-left:1.2em;margin:8px 0}details.help-more li{margin:8px 0}
 details.help-more p{margin:8px 0;max-width:72ch}
 body.party::before{animation:hue 1.2s linear infinite}body.party svg .bar{animation:bounce .35s ease-in-out infinite alternate}
@@ -423,6 +461,8 @@ var s=window.getSelection();s.removeAllRanges();s.addRange(r)}say(navigator.plat
 if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(b.dataset.copy).then(function(){say('Copied!')},manual)}else{manual()}});
 var W=window.worklog={};
 W.init=function(){
+(function(){var r=document.getElementById('ts-range');if(!r)return;function sync(){document.querySelectorAll('.tsform .custom')
+.forEach(function(x){x.hidden=r.value!=='custom'})}r.addEventListener('change',sync);sync()})();
 (function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
 function sync(){t.hidden=s.value!=='custom'}s.addEventListener('change',function(){sync();if(!t.hidden)t.focus()});sync()})();
 (function(){var b=document.getElementById('jobstate');if(!b||b.dataset.running!=='1'||W.following)return;
@@ -486,14 +526,17 @@ if(!f||f.method!=='post'||f.hasAttribute('data-plain')||!window.fetch||!window.D
 ev.preventDefault();var sub=ev.submitter;
 if(f.dataset.confirm){W.dialog('Are you sure?',f.dataset.confirm,{yes:f.dataset.confirmYes||'Yes',danger:true,onyes:function(){W.send(f,sub)}});return}
 W.send(f,sub)});
-document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a.forget');
-if(!a||!window.fetch||!window.HTMLDialogElement)return;ev.preventDefault();
+document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a.forget,a[data-popup]');
+if(!a||!window.fetch||!window.HTMLDialogElement)return;ev.preventDefault();var id=a.dataset.popup||'forget';
 fetch(a.href,{cache:'no-store'}).then(function(r){return r.text()}).then(function(html){
-var sec=new DOMParser().parseFromString(html,'text/html').getElementById('forget');if(!sec){location.href=a.href;return}
-var h=sec.querySelector('h2'),title=h?h.textContent:'Forget this login?';if(h)h.remove();
-sec.removeAttribute('id');sec.className='forget-body';
+var sec=new DOMParser().parseFromString(html,'text/html').getElementById(id);if(!sec){location.href=a.href;return}
+var h=sec.querySelector('h2'),title=h?h.textContent:'Are you sure?';if(h)h.remove();
+sec.removeAttribute('id');sec.className=id+'-body popup-body';document.adoptNode(sec);
 var cancel=sec.querySelector('a.btn.quiet');if(cancel)cancel.addEventListener('click',function(e){e.preventDefault();sec.closest('dialog').close()});
-W.dialog(title,sec,{kind:'bad',noclose:true})}).catch(function(){location.href=a.href})});
+W.dialog(title,sec,{kind:id==='forget'?'bad':'',noclose:true})}).catch(function(){location.href=a.href})});
+document.addEventListener('change',function(ev){var s=ev.target;if(!s.dataset||!s.dataset.reveal)return;
+var t=s.ownerDocument.getElementById(s.dataset.reveal)||(s.form&&s.form.querySelector('#'+s.dataset.reveal));if(!t)return;
+var on=s.value==='__new__';t.hidden=!on;t.required=on;if(on)t.focus()});
 W.init();
 """
 
@@ -525,7 +568,7 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
            extra: str = "", fun: bool = False, csrf: str = "") -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
-                                  ("settings", "/settings", "Settings")))
+                                  ("timesheet", "/timesheet", "Timesheet"), ("settings", "/settings", "Settings")))
     banners = ""
     if job.get("running"):
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
@@ -621,7 +664,203 @@ def _chat_list(chat_items: list[dict], open_: bool) -> str:
     return f'<details><summary>{n} chat{"s" * (n != 1)}</summary>{lst}</details>'
 
 
-def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
+def _summary_age(meta: dict) -> float:
+    try:
+        return datetime.fromisoformat(str(meta.get("generated_at"))).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _tasks_html(p, s: dict) -> str:
+    """Claude's to-do items for this project and day, with Copy; or the summary's suggested next steps."""
+    if p.tasks:
+        items = "".join(f'<li class="{t["status"]}"><span aria-hidden="true">{"✅" if t["status"] == "done" else "⬜"}'
+                        f'</span> {e(t["text"])}</li>' for t in p.tasks)
+        md = "\n".join(f'- [{"x" if t["status"] == "done" else " "}] {t["text"]}' for t in p.tasks)
+        plain = "\n".join(("✓ " if t["status"] == "done" else "• ") + t["text"] for t in p.tasks)
+        done = sum(t["status"] == "done" for t in p.tasks)
+        return (f'<div class="tasks"><div class="taskhead"><b>Tasks</b> <span class="muted">{done} of {len(p.tasks)} '
+                f'done</span><span class="acts"><button type="button" class="quiet copy" data-copy="{e(md)}">Copy checklist'
+                f'</button><button type="button" class="quiet copy" data-copy="{e(plain)}">Copy as text</button></span></div>'
+                f'<ul>{items}</ul></div>')
+    nxt = [x for x in s.get("next") or [] if isinstance(x, str)]
+    if nxt:
+        items = "".join(f"<li>⬜ {e(x)}</li>" for x in nxt)
+        text = "\n".join(f"- [ ] {x}" for x in nxt)
+        return (f'<div class="tasks"><div class="taskhead"><b>Suggested next steps</b> <span class="muted">from the summary'
+                f'</span><span class="acts"><button type="button" class="quiet copy" data-copy="{e(text)}">Copy</button>'
+                f'</span></div><ul>{items}</ul></div>')
+    return ""
+
+
+def _guess_html(app: App, day: date, p) -> str:
+    g = p.guess
+    if not g or not g.get("sessions"):
+        return ""
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    hidden = (f'{c}<input type="hidden" name="d" value="{day.isoformat()}">'
+              f'<input type="hidden" name="key" value="{e(p.key)}">')
+    n = len(g["sessions"])
+    return (f'<div class="guess" role="note"><span>🤔 Probably <b>{e(g.get("name") or "?")}</b>? '
+            f'<span class="muted">{n} session{"s" * (n != 1)} here: {e(g.get("why") or "")}</span></span>'
+            f'<span class="acts"><form method="post" action="/projects/guess">{hidden}'
+            f'<input type="hidden" name="answer" value="yes"><button>Yes, move</button></form>'
+            f'<form method="post" action="/projects/guess">{hidden}<input type="hidden" name="answer" value="no">'
+            f'<button class="quiet">No</button></form></span></div>')
+
+
+def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov, line: str) -> str:
+    """The "Edit" popup for one card: rename, move (all or some sessions), folder rule, tag, timesheet line."""
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    choices = [(k, q.name) for k, q in projects.items() if k != p.key]
+    choices += sorted(((k, n) for k, n in known.items() if k != p.key and k not in projects), key=lambda kv: kv[1].lower())
+    opts = '<option value="">Keep it here</option>'
+    if choices[: len(projects) - 1]:
+        opts += '<optgroup label="Today">' + "".join(f'<option value="{e(k)}">{e(n)}</option>'
+                                                     for k, n in choices[: len(projects) - 1]) + "</optgroup>"
+    if choices[len(projects) - 1:]:
+        opts += '<optgroup label="Recent projects">' + "".join(f'<option value="{e(k)}">{e(n)}</option>'
+                                                             for k, n in choices[len(projects) - 1:]) + "</optgroup>"
+    opts += '<option value="__new__">New project…</option>'
+    sessions = ""
+    if len(p.sessions_list) > 1:
+        rows = "".join(
+            f'<div class="check"><input type="checkbox" id="s-{i}" name="s_{e(x["id"])}" value="1" checked>'
+            f'<label for="s-{i}"><b>{e(x["start"] or "–")}</b> · {_dur(x["minutes"])} · {e(x["first"] or "(no prompt)")}'
+            f'</label></div>' for i, x in enumerate(p.sessions_list))
+        sessions = f'<fieldset class="sessions"><legend>Which sessions to move</legend>{rows}</fieldset>'
+    rule = ""
+    folders = sorted(p.started_in)
+    if folders:
+        pick = (f'<code>{e(folders[0])}</code><input type="hidden" name="rule_folder" value="{e(folders[0])}">'
+                if len(folders) == 1 else '<select name="rule_folder" style="width:auto">' +
+                "".join(f'<option value="{e(f)}">{e(f)}</option>' for f in folders) + "</select>")
+        rule = (f'<div class="check"><input type="checkbox" id="rule" name="rule" value="1"><label for="rule">Always put '
+                f'sessions started in {pick} into that project on this computer (also for past days)</label></div>')
+    auto = p.tag or "Feature"
+    tag_opts = f'<option value="auto">Automatic ({e(auto)})</option>' + "".join(
+        f'<option value="{t}"{" selected" if any(ov.tags.get(x["id"]) == t for x in p.sessions_list) else ""}>{t}</option>'
+        for t in TAGS)
+    return f"""<section class="block edit-card" id="edit" aria-labelledby="edit-title">
+<h2 id="edit-title">Edit “{e(p.name)}”</h2>
+<form method="post" action="/projects/edit">{c}<input type="hidden" name="d" value="{day.isoformat()}">
+<input type="hidden" name="key" value="{e(p.key)}">
+<label for="ed-name">Name on cards</label>
+<input type="text" id="ed-name" name="name" value="{e(p.name)}" maxlength="80" required>
+<p class="help">Shown for this project on every day.</p>
+<label for="ed-move">Move to another project</label>
+<select id="ed-move" name="target" data-reveal="ed-new">{opts}</select>
+<input type="text" id="ed-new" name="new_name" maxlength="80" placeholder="New project name" hidden>
+{sessions}{rule}
+<label for="ed-tag">Kind of work</label><select id="ed-tag" name="tag">{tag_opts}</select>
+<label for="ed-line">Timesheet line</label>
+<input type="text" id="ed-line" name="line" value="{e(line)}" maxlength="160">
+<p class="help">One line for this project on {day:%d %b}, used in the timesheet.</p>
+<div class="row"><button>Save</button><a class="btn quiet" href="/?d={day.isoformat()}">Cancel</a>
+<button class="quiet" name="reset" value="1" formnovalidate>Undo my changes</button></div>
+</form></section>"""
+
+
+RANGES = (("this-week", "This week"), ("last-week", "Last week"), ("this-month", "This month"),
+          ("last-month", "Last month"), ("custom", "Custom"))
+
+
+def timesheet_query(cfg: Config, q: dict) -> dict:
+    """The timesheet's choices from the address bar, checked and with defaults."""
+    from . import timesheet as ts
+    today = date.today()
+    rng = q.get("range") if q.get("range") in dict(RANGES) else "this-week"
+    bounds = {"this-week": ts.week_bounds(today), "last-week": ts.week_bounds(today, -1),
+              "this-month": ts.month_bounds(today), "last-month": ts.month_bounds(today, -1)}
+    start, end = bounds.get(rng, ts.week_bounds(today))
+    if rng == "custom":
+        start, end = _parse_date(q.get("from")) or start, _parse_date(q.get("to")) or end
+    account = q.get("account") if cfg.account(q.get("account", "")) else ""
+    rnd = int(q.get("round")) if q.get("round") in ("15", "30") else 0
+    return {"range": rng, "from": start, "to": end, "account": account, "round": rnd, "details": q.get("details") == "1"}
+
+
+def _qs(t: dict, **extra) -> str:
+    from urllib.parse import urlencode
+    params = {"range": t["range"], "from": t["from"].isoformat(), "to": t["to"].isoformat(), "account": t["account"],
+              "round": str(t["round"]), "details": "1" if t["details"] else ""}
+    params.update(extra)
+    return urlencode({k: v for k, v in params.items() if v not in ("", "0", None)})
+
+
+def page_timesheet(app: App, cfg: Config, q: dict) -> str:
+    """Hours per day and project, a tag and one line each: ready to paste or download."""
+    from . import timesheet as ts
+    t = timesheet_query(cfg, q)
+    store = _store(cfg)
+    if store is None:
+        return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
+    sel = lambda opts, cur: "".join(f'<option value="{e(v)}"{" selected" if v == cur else ""}>{e(n)}</option>'  # noqa: E731
+                                    for v, n in opts)
+    form = (f'<form method="get" action="/timesheet" class="tsform">'
+            f'<div><label for="ts-range">Days</label><select id="ts-range" name="range">{sel(RANGES, t["range"])}</select></div>'
+            f'<div class="custom"><label for="ts-from">From</label><input type="date" id="ts-from" name="from" '
+            f'value="{t["from"].isoformat()}"></div><div class="custom"><label for="ts-to">To</label>'
+            f'<input type="date" id="ts-to" name="to" value="{t["to"].isoformat()}"></div>'
+            f'<div><label for="ts-acct">Account</label><select id="ts-acct" name="account">'
+            f'{sel([("", "All accounts")] + [(a.name, a.name) for a in cfg.accounts], t["account"])}</select></div>'
+            f'<div><label for="ts-round">Round each row</label><select id="ts-round" name="round">'
+            f'{sel([("0", "No rounding"), ("15", "To 15 minutes"), ("30", "To 30 minutes")], str(t["round"]))}</select></div>'
+            f'<div class="check"><input type="checkbox" id="ts-details" name="details" value="1"'
+            f'{" checked" if t["details"] else ""}><label for="ts-details">Accounts, devices, sessions, tokens</label></div>'
+            f'<div><button>Show</button></div></form>')
+    head = (f'<div class="daynav"><h1><span class="grad">Timesheet</span><small>{t["from"]:%a %d %b} – '
+            f'{t["to"]:%a %d %b %Y}</small></h1></div>')
+    try:
+        rows = ts.build(store, t["from"], t["to"], time_mode=cfg.time_mode, account=t["account"] or None)
+    except ValueError as exc:
+        return head + form + f'<div class="banner bad" role="alert">{e(exc)}</div>'
+    if not rows:
+        return head + form + ('<div class="empty"><p>No work recorded for these days'
+                              + (f' on <b>{e(t["account"])}</b>' if t["account"] else "") + '.</p></div>')
+    rnd, extra = t["round"], t["details"]
+    total = round(sum(r.hours(rnd) for r in rows), 2)
+    body_rows = []
+    for r in rows:
+        cells = [f'<td><a href="/?d={r.day.isoformat()}">{r.day:%a %d %b}</a></td>', f"<td>{e(r.project)}</td>",
+                 f'<td class="num">{"≈" if r.approx else ""}{r.hours(rnd):g}</td>',
+                 "<td>" + (f'<span class="pill tag">{e(r.tag)}</span>' if r.tag else "") + "</td>",
+                 f'<td class="sum">{e(r.summary)}' + ("" if r.summarized else ' <span class="muted">(not summarized)</span>')
+                 + "</td>"]
+        if extra:
+            cells += [f"<td>{e(', '.join(r.accounts))}</td>", f"<td>{e(', '.join(r.devices))}</td>",
+                      f'<td class="num">{r.sessions}</td>', f'<td class="num">{_short(r.tokens)}</td>']
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    heads = "".join(f'<th{" class=num" if h in ("Hours", "Sessions", "Tokens") else ""}>{h}</th>'
+                    for h in ts.COLUMNS + (ts.EXTRA if extra else ()))
+    table = (f'<div class="tablewrap"><table class="sheet"><thead><tr>{heads}</tr></thead><tbody>{"".join(body_rows)}'
+             f'</tbody><tfoot><tr><td>Total</td><td></td><td class="num"><b>{total:g}</b></td>'
+             f'<td colspan="{2 + (4 if extra else 0)}"></td></tr></tfoot></table></div>')
+    per = "".join(f"<li><span>{e(n)}</span><b>{h:g} h</b></li>" for n, h in ts.totals(rows, rnd))
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    missing = ts.missing_days(rows)
+    write = ""
+    if missing:
+        busy = " disabled" if app.jobs.snapshot().get("running") else ""
+        write = (f'<div class="notice"><span class="ico" aria-hidden="true">✍️</span><span class="txt"><b>{len(missing)} '
+                 f'day{"s" * (len(missing) != 1)} without a written summary.</b> Those rows use your first prompt '
+                 f'instead.</span><span class="acts"><form method="post" action="/timesheet/summaries">{c}'
+                 f'<input type="hidden" name="from" value="{t["from"].isoformat()}"><input type="hidden" name="to" '
+                 f'value="{t["to"].isoformat()}"><button{busy}>Write missing summaries</button></form></span></div>')
+    tsv, md = ts.to_tsv(rows, rnd, extra), ts.to_markdown(rows, rnd, extra)
+    exports = (f'<div class="row exports"><a class="btn" href="/timesheet/export?{e(_qs(t, fmt="xlsx"))}" download>'
+               f'⬇ Excel</a><a class="btn quiet" href="/timesheet/export?{e(_qs(t, fmt="csv"))}" download>⬇ CSV</a>'
+               f'<button type="button" class="quiet copy" data-copy="{e(tsv)}">Copy as table</button>'
+               f'<button type="button" class="quiet copy" data-copy="{e(md)}">Copy Markdown</button></div>')
+    note = ('<p class="muted" style="font-size:.85rem">Hours are active time: breaks over 15 minutes are left out, and '
+            'sessions at the same time count once. ≈ marks days recorded before 0.4.0 (first to last message). '
+            'Fix a project or a line with <b>✏️ Edit</b> on the day.</p>' if cfg.time_mode == "active" else
+            '<p class="muted" style="font-size:.85rem">Hours are first to last message (Settings → Summaries → Time).</p>')
+    return (head + form + write + f'<section class="block">{exports}{table}{note}</section>'
+            + f'<section class="block"><h2>Per project</h2><ul class="totals">{per}</ul></section>')
+
+
+def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> tuple[str, str | None]:
     store = _store(cfg)
     if store is None:
         return (f'<div class="empty">No data repo found at <code>{e(home_relative(cfg.store_repo))}</code>. '
@@ -634,11 +873,16 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
 
     history_days = [day - timedelta(days=i) for i in reversed(range(HISTORY_DAYS))]
     history, names = [], [a.name for a in cfg.accounts]
+    known: dict[str, str] = {k: ov.names.get(k) or str(v.get("name") or k) for k, v in ov.projects.items()}
     chat_counts: dict[date, int] = {}
     activity: dict[date, int] = {}  # tokens per day (1 for a day with only chats): drives the calendar
     for d in history_days:
         per: dict[str, int] = {}
         for r in store.iter_json(f"records/{d.isoformat()}"):
+            proj = r.get("project") or {}
+            if proj.get("kind") in ("git", "custom"):
+                k = project_key(proj)
+                known.setdefault(k, ov.names.get(k) or project_title(proj))
             if r.get("source") == "claude.ai":
                 chat_counts[d] = chat_counts.get(d, 0) + 1
             name = r.get("account", "?")
@@ -728,13 +972,25 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         '</div>')
 
     entries = []
+    summarized_at = _summary_age(saved_meta)
+    edit_html = ""
     for p in sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -sum(p.tokens.values()))):
-        s = saved.get(p.key)
-        bullets = s["bullets"] if s else plain_summary(p)
-        src = ("Summary by Claude" if s and s.get("source") == "ai" else
-               "Your prompts. Press “Write summaries” for a written summary." if not s else "Your prompts")
-        items = ("<ul>" + "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets) + "</ul>"
-                 if s or not p.chat_items else "")
+        s = saved.get(p.key) or {}
+        stale = ov.stale.get(f"{day.isoformat()}|{p.key}", 0) > summarized_at
+        bullets = s["bullets"] if s.get("bullets") else plain_summary(p)
+        if not s:
+            src = "Your prompts. Press “Write summaries” for a written summary."
+        elif stale:
+            src = "Summary out of date: sessions were moved. Press “Rewrite summaries”."
+        else:
+            src = "Summary by Claude" if s.get("source") == "ai" else "Your prompts"
+        line = ov.lines.get(f"{day.isoformat()}|{p.key}") or s.get("line") or plain_line(p)
+        if s.get("paragraph"):
+            items = (f'<p class="para">{e(s["paragraph"])}</p><details><summary>Details</summary><ul>'
+                     + "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets) + "</ul></details>")
+        else:
+            items = ("<ul>" + "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets) + "</ul>"
+                     if s or not p.chat_items else "")
         if p.chat_items:
             if not s:
                 src = ("claude.ai's summary of each chat, or your first messages. "
@@ -743,11 +999,14 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         where = (f"{e(p.remote['host'])}/{e(p.remote['slug'])}" if p.remote
                  else "From your claude.ai export" + (" · files in Claude's sandbox" if p.folders else "")
                  if p.kind == "chat"
-                 else ("Folders: " + _join(sorted(p.folders)) if p.folders else "Not in a git repo"))
+                 else ("Folders: " + _join(sorted(p.folders)) if p.folders else
+                       "Your own project" if p.kind == "custom" else "Not in a git repo"))
         facts = [("Accounts", _join(sorted(p.accounts))), ("Devices", _join(sorted(p.devices)))]
         facts += [("Sessions", str(p.sessions))] if p.sessions else []
         facts += [("Chats", str(p.chats))] if p.chats else []
-        facts += [("Time", _dur(p.minutes)),
+        time_txt = ("≈" if p.approx else "") + _dur(p.minutes)
+        facts += [("Time", f'<span title="{"Before 0.4.0: first to last message" if p.approx else "Active time"}">'
+                   f'{time_txt}</span>'),
                   ("Tokens", _n(sum(p.tokens.values())) if p.sessions else "no data from claude.ai")]
         facts += [("Files edited", str(len(p.files)))] if p.files or p.sessions else []
         dl = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts)
@@ -758,8 +1017,20 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         if p.files:
             extra += ('<details><summary>Files edited</summary><ul>'
                       + "".join(f"<li><code>{e(f)}</code></li>" for f in sorted(p.files)[:60]) + "</ul></details>")
-        entries.append(f'<article class="entry"><h3>{e(p.name)}</h3><div class="where">{where}</div>'
-                       f'{items}<div class="src">{e(src)}</div><dl class="facts">{dl}</dl>{extra}</article>')
+        edited_tag = any(ov.tags.get(x["id"]) for x in p.sessions_list)
+        tag = (p.tag if edited_tag else s.get("tag") or p.tag) if p.sessions or p.chats else None
+        edit_url = f"/?d={day.isoformat()}&edit={quote(p.key, safe='')}"
+        head_row = (f'<div class="cardhead"><h3>{e(p.name)}</h3>'
+                    + (f'<span class="pill tag">{e(tag)}</span>' if tag else "")
+                    + f'<a class="btn quiet edit" href="{edit_url}#edit" data-popup="edit" '
+                      f'aria-label="Edit {e(p.name)}">✏️ Edit</a></div>')
+        tline = (f'<div class="tline"><span class="muted">Timesheet:</span> {e(line)}</div>'
+                 if s or ov.lines.get(f"{day.isoformat()}|{p.key}") else "")
+        entries.append(f'<article class="entry">{head_row}<div class="where">{where}</div>{_guess_html(app, day, p)}'
+                       f'{items}{tline}{_tasks_html(p, s)}<div class="src">{e(src)}</div><dl class="facts">{dl}</dl>'
+                       f'{extra}</article>')
+        if edit_key == p.key:
+            edit_html = _edit_form(app, day, p, projects, known, ov, line)
 
     acct_rows = "".join(
         f'<tr><td><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;'
@@ -781,7 +1052,7 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
              f'including sub-agents. Usage, not a bill.</p></div></aside>')
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
-    body = (head + lede + _chart(chart_history, names, day, chat_counts) + actions + insights
+    body = (head + edit_html + lede + _chart(chart_history, names, day, chat_counts) + actions + insights
             + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>' + party)
     return body, None
 
@@ -1412,6 +1683,12 @@ class App:
             return ("/settings?ok=job#data-repo" if started else "/settings#data-repo"), None, form
         if path == "/accounts/forget":
             return self._forget(cfg, form)
+        if path == "/projects/edit":
+            return self._project_edit(cfg, form)
+        if path == "/projects/guess":
+            return self._project_guess(cfg, form)
+        if path == "/timesheet/summaries":
+            return self._timesheet_summaries(cfg, form)
         if path == "/accounts/add-folder":
             return self._account_add_folder(cfg, form)
         if path == "/notices/dismiss":
@@ -1597,6 +1874,132 @@ class App:
         started = self.jobs.start("Forgetting a login", job)
         return ("/settings?ok=job#logins" if started else "/settings"), None, form
 
+    def _day_projects(self, cfg: Config, form: dict):
+        """(store, day, overrides, projects) for a correction posted from a day page, or an error message."""
+        day = _parse_date(form.get("d"))
+        store = _store(cfg)
+        if day is None or store is None:
+            return None, "That day isn't available."
+        ov = overrides.load(store.path)
+        _, projects = aggregate(list(store.iter_json(f"records/{day.isoformat()}")), ov, cfg.time_mode)
+        p = projects.get(form.get("key", ""))
+        if p is None:
+            return None, "That project isn't on this day any more. Reload the page."
+        return (store, day, ov, projects, p), None
+
+    def _save_corrections(self, cfg: Config, store: GitStore, edits: dict, what: str) -> None:
+        with store.lock():
+            store.pull()
+            overrides.change(store, cfg.device, edits)
+            store.commit_and_push(f"{what} on {cfg.device}")
+
+    def _project_edit(self, cfg: Config, form: dict):
+        """Rename a project, move some or all of a card's sessions, add a folder rule, set the tag or timesheet line."""
+        got, err = self._day_projects(cfg, form)
+        if err:
+            return None, err, form
+        store, day, ov, projects, p = got
+        here = f"{day.isoformat()}|{p.key}"
+        ids = [x["id"] for x in p.sessions_list]
+        if form.get("reset") == "1":
+            edits = {"names": {p.key: None}, "lines": {here: None},
+                     "moves": {i: None for i in ids if i in ov.moves}, "tags": {i: None for i in ids if i in ov.tags}}
+            self._save_corrections(cfg, store, edits, "undo corrections")
+            return f"/?d={day.isoformat()}&ok=edited", None, form
+        edits: dict[str, dict] = {s: {} for s in overrides.SECTIONS}
+        name = " ".join(form.get("name", "").split())[:80]
+        if not name:
+            return None, "Give the project a name.", form
+        if name != p.name:
+            default = project_title({"kind": p.kind, "name": p.name, "remote": p.remote})
+            edits["names"][p.key] = None if name == default and p.key not in ov.projects else name
+        target = form.get("target", "")
+        if target == "__new__":
+            new_name = " ".join(form.get("new_name", "").split())[:80]
+            if not new_name:
+                return None, "Name the new project.", form
+            slug = re.sub(r"[^a-z0-9]+", "-", new_name.lower()).strip("-")[:40] or "project"
+            target = f"custom:{slug}"
+            edits["projects"][target] = {"kind": "custom", "name": new_name, "remote": None}
+            edits["names"][target] = new_name
+        elif target:
+            allowed = set(projects) | set(ov.projects)
+            for d in range(1, 31):  # "Recent projects" in the form: anything seen in the last 30 days
+                for r in store.iter_json(f"records/{(day - timedelta(days=d)).isoformat()}"):
+                    allowed.add(project_key(r.get("project") or {}))
+            if target not in allowed:
+                return None, "Pick a project from the list.", form
+        if target and target != p.key:
+            chosen = [i for i in ids if form.get(f"s_{i}") == "1"] if len(ids) > 1 else ids
+            if not chosen:
+                return None, "Tick at least one session to move.", form
+            edits["moves"].update({i: target for i in chosen})
+            now = time.time()
+            edits["stale"].update({here: now, f"{day.isoformat()}|{target}": now})
+            folder = form.get("rule_folder", "")
+            if form.get("rule") == "1" and folder in p.started_in:
+                edits["rules"][folder] = target
+        tag = form.get("tag", "auto")
+        if tag == "auto":
+            edits["tags"].update({i: None for i in ids if i in ov.tags})
+        elif tag in TAGS:
+            edits["tags"].update({i: tag for i in ids if ov.tags.get(i) != tag})
+        line = " ".join(form.get("line", "").split())[:160]
+        if line != (ov.lines.get(here) or ""):
+            saved = load_saved_summaries(store, day).get("summaries", {}).get(p.key) or {}
+            auto_line = saved.get("line") or plain_line(p)
+            edits["lines"][here] = None if not line or line == auto_line else line
+        edits = {k: v for k, v in edits.items() if v}
+        if edits:
+            self._save_corrections(cfg, store, edits, "corrections")
+        return f"/?d={day.isoformat()}&ok=edited", None, form
+
+    def _project_guess(self, cfg: Config, form: dict):
+        """Answer "Probably xoo?" on a card."""
+        got, err = self._day_projects(cfg, form)
+        if err:
+            return None, err, form
+        store, day, _, _, p = got
+        g = p.guess or {}
+        ids = [i for i in g.get("sessions") or [] if isinstance(i, str)]
+        if not ids:
+            return f"/?d={day.isoformat()}", None, form
+        if form.get("answer") == "yes":
+            proj = {"kind": "git", "name": g.get("name"), "remote": g.get("remote")}
+            target = project_key(proj)
+            now = time.time()
+            edits = {"moves": {i: target for i in ids},
+                     "stale": {f"{day.isoformat()}|{p.key}": now, f"{day.isoformat()}|{target}": now}}
+            if not g.get("remote"):
+                edits["projects"] = {target: proj}
+            self._save_corrections(cfg, store, edits, "move guessed sessions")
+            return f"/?d={day.isoformat()}&ok=guess_yes", None, form
+        self._save_corrections(cfg, store, {"noguess": {i: True for i in ids}}, "keep guessed sessions")
+        return f"/?d={day.isoformat()}&ok=guess_no", None, form
+
+    def _timesheet_summaries(self, cfg: Config, form: dict):
+        """Write the missing summaries for the days shown on the timesheet."""
+        from . import timesheet as ts
+        start, end = _parse_date(form.get("from")), _parse_date(form.get("to"))
+        store = _store(cfg)
+        if start is None or end is None or store is None:
+            return None, "Pick the days first.", form
+        try:
+            days = ts.missing_days(ts.build(store, start, end, time_mode=cfg.time_mode))
+        except ValueError as exc:
+            return None, str(exc), form
+        if not days:
+            return "/timesheet", None, form
+        if not cfg.use_ai:
+            return None, "AI summaries are switched off in Settings → Summaries.", form
+
+        def job():
+            for d in days:
+                build_report(cfg, d, use_ai=True, write=True)
+            return f"Summaries written for {len(days)} day{'s' * (len(days) != 1)}."
+        started = self.jobs.start("Writing summaries", job)
+        return ("/timesheet?ok=job" if started else "/timesheet"), None, form
+
     def _account_add_folder(self, cfg: Config, form: dict):
         """Add a folder the watcher found: pick a free name from the folder, then install its hook."""
         folder = _expand(form.get("folder", ""))
@@ -1698,7 +2101,7 @@ def _parse_date(v: str | None) -> date | None:
 
 
 JOB_PATHS = {"/action/collect", "/action/report", "/sources/scan", "/sync/test", "/accounts/forget", "/update",
-             "/restart"}
+             "/restart", "/timesheet/summaries"}
 
 
 def _fetch_answer(app: App, path: str, location: str | None, error: str | None) -> dict:
@@ -1741,6 +2144,29 @@ def make_handler(app: App):
             self.end_headers()
             self.wfile.write(data)
 
+        def _export(self, cfg, q: dict):
+            from . import timesheet as ts
+            t = timesheet_query(cfg, q)
+            store = _store(cfg)
+            fmt = q.get("fmt") if q.get("fmt") in ("csv", "xlsx") else "csv"
+            if store is None:
+                return self._send(404, "No data repo", "text/plain")
+            try:
+                rows = ts.build(store, t["from"], t["to"], time_mode=cfg.time_mode, account=t["account"] or None)
+            except ValueError as exc:
+                return self._send(400, str(exc), "text/plain")
+            data = (ts.to_xlsx if fmt == "xlsx" else ts.to_csv)(rows, t["round"], t["details"])
+            name = f"worklog-timesheet-{t['from'].isoformat()}-to-{t['to'].isoformat()}.{fmt}"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8" if fmt == "csv" else
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(data)
+
         def _redirect(self, location: str):
             self.send_response(303)
             self.send_header("Location", location)
@@ -1772,11 +2198,15 @@ def make_handler(app: App):
                     return self._page("Set up", page_setup(app), "settings")
                 if url.path == "/":
                     day = _parse_date(q.get("d")) or date.today()
-                    body, err = page_day(app, cfg, day)
+                    body, err = page_day(app, cfg, day, q.get("edit"))
                     return self._page(f"{day:%d %b %Y}", body, "day", q.get("ok"), err)
                 if url.path == "/settings":
                     forget_ref = q.get("forget") if re.fullmatch(r"[0-9a-f]{12}", q.get("forget", "")) else None
                     return self._page("Settings", page_settings(app, cfg, forget_ref), "settings", q.get("ok"))
+                if url.path == "/timesheet":
+                    return self._page("Timesheet", page_timesheet(app, cfg, q), "timesheet", q.get("ok"))
+                if url.path == "/timesheet/export":
+                    return self._export(cfg, q)
                 if url.path == "/sources":
                     return self._page("Sources", page_sources(app, cfg), "sources", q.get("ok"))
                 return self._send(404, "Not found", "text/plain")

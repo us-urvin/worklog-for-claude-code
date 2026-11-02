@@ -3,6 +3,8 @@ import json
 import subprocess
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from worklog.collector import detect_project
 from worklog.parser import ParseStats, SessionDay, command_places, is_noise, parse_transcript
 
@@ -345,7 +347,7 @@ def _sheet_store(repo):
                                          prompts=["=HYPERLINK(\"x\") /code-review 505"]))
     _put(store, d2, "Home", "personal", _rec("c", "09:00", "09:20", project=XOO, active=20, prompts=["fix qty bug"],
                                              files=["app/qty.py"]))
-    store.write_json(f"reports/{d1}/Office.json", {"generated_at": "2026-11-02T23:30:00", "summaries": {
+    store.write_json(f"reports/{d1}/Office.json", {"generated_at": "2026-11-01T23:30:00+00:00", "summaries": {
         "github.com/xoikospos/xoo": {"source": "ai", "line": "Added the item quantity field", "tag": "Feature",
                                      "bullets": ["- Added the field"]}}})
     return store
@@ -427,3 +429,97 @@ def test_timesheet_cli(repo, home, monkeypatch, capsys, tmp_path):
     assert cli.main(args) == 0
     assert _zip.is_zipfile(dest)
     assert cli.main(["timesheet", "--from", "2026-01-01", "--to", "2026-12-31"]) == 2
+
+
+# ------------------------------------------------------------------ the day page and timesheet page
+from worklog import web  # noqa: E402
+
+
+@pytest.fixture
+def day_app(home, repo, monkeypatch):
+    from test_accounts import make_cfg
+    _sheet_store(repo)
+    cfg = make_cfg(home, repo)
+    cfg.device = "Office"
+    monkeypatch.setattr(web, "_try_config", lambda: cfg)
+    return web.App(1), cfg
+
+
+D1 = _date(2026, 11, 2)
+
+
+def test_cards_show_tag_edit_and_paragraph(day_app, repo):
+    app, cfg = day_app
+    body, _ = web.page_day(app, cfg, D1)
+    assert '<span class="pill tag">Feature</span>' in body and 'data-popup="edit"' in body
+    assert 'class="tline"' in body and "Added the item quantity field" in body
+    assert 'id="edit"' not in body  # the form only appears when asked for
+    body, _ = web.page_day(app, cfg, D1, "misc:R&D / misc")
+    assert 'id="edit"' in body and 'name="rule_folder" value="~/development"' in body
+    assert '<option value="github.com/xoikospos/xoo">xoo</option>' in body
+
+
+def test_edit_moves_renames_tags_and_undoes(day_app, repo):
+    app, cfg = day_app
+    base = {"d": D1.isoformat(), "key": "misc:R&D / misc", "name": "R&D / misc", "tag": "auto", "line": ""}
+    loc, err, _ = app.post("/projects/edit", {**base, "target": "github.com/xoikospos/xoo", "rule": "1",
+                                              "rule_folder": "~/development"})
+    assert err is None and loc.endswith("ok=edited")
+    ov = overrides.load(repo)
+    assert ov.moves == {"b": "github.com/xoikospos/xoo"} and ov.rule_for("Office", "~/development")
+    _, projects = aggregate(list(GitStore(repo).iter_json("records/2026-11-02")), ov)
+    assert list(projects) == ["github.com/xoikospos/xoo"]
+    body, _ = web.page_day(app, cfg, D1)
+    assert "Summary out of date" in body  # sessions moved after the summary was written
+    xoo = {"d": D1.isoformat(), "key": "github.com/xoikospos/xoo", "name": "Xoikos POS", "tag": "Review",
+           "line": "Reviewed PR #505 and added the qty field"}
+    assert app.post("/projects/edit", xoo)[1] is None
+    ov = overrides.load(repo)
+    assert ov.names["github.com/xoikospos/xoo"] == "Xoikos POS" and set(ov.tags.values()) == {"Review"}
+    assert ov.lines["2026-11-02|github.com/xoikospos/xoo"].startswith("Reviewed PR #505")
+    assert app.post("/projects/edit", {**xoo, "reset": "1"})[1] is None
+    ov = overrides.load(repo)
+    assert not ov.names and not ov.tags and not ov.lines and not ov.moves  # the rule stays: it's its own choice
+
+
+def test_edit_new_project_and_bad_input(day_app, repo):
+    app, _ = day_app
+    base = {"d": D1.isoformat(), "key": "misc:R&D / misc", "name": "R&D / misc", "tag": "auto", "line": ""}
+    assert app.post("/projects/edit", {**base, "target": "__new__", "new_name": ""})[1] == "Name the new project."
+    bad = app.post("/projects/edit", {**base, "target": "github.com/evil/elsewhere"})
+    assert bad[1] == "Pick a project from the list."
+    assert "isn't on this day" in app.post("/projects/edit", {**base, "key": "nope"})[1]
+    assert app.post("/projects/edit", {**base, "target": "__new__", "new_name": "Client X support"})[1] is None
+    ov = overrides.load(repo)
+    assert ov.moves == {"b": "custom:client-x-support"} and ov.projects["custom:client-x-support"]["name"] == \
+        "Client X support"
+
+
+def test_guess_yes_and_no(day_app, repo):
+    app, cfg = day_app
+    store = GitStore(repo)
+    guess = {"path": "~/development/xoo", "name": "xoo", "remote": XOO["remote"], "why": "it worked in xoo and api"}
+    _put(store, "2026-11-02", "Office", "work", _rec("g", "13:00", "13:30", project=dict(MISC, guess=guess), active=30))
+    body, _ = web.page_day(app, cfg, D1)
+    assert "Probably <b>xoo</b>?" in body
+    form = {"d": D1.isoformat(), "key": "misc:R&D / misc"}
+    assert app.post("/projects/guess", {**form, "answer": "no"})[0].endswith("ok=guess_no")
+    assert "Probably" not in web.page_day(app, cfg, D1)[0]
+    overrides.change(store, "Office", {"noguess": {"g": None}})
+    assert app.post("/projects/guess", {**form, "answer": "yes"})[0].endswith("ok=guess_yes")
+    assert overrides.load(repo).moves == {"g": "github.com/xoikospos/xoo"}
+
+
+def test_timesheet_page_and_downloads(day_app, repo):
+    app, cfg = day_app
+    html = web.page_timesheet(app, cfg, {"range": "custom", "from": "2026-11-01", "to": "2026-11-02", "round": "15",
+                                         "details": "1"})
+    assert "Added the item quantity field" in html and "(not summarized)" in html
+    assert "Write missing summaries" in html and "fmt=xlsx" in html and 'data-copy="Date\tProject' in html
+    assert "<th>Accounts</th>" in html and "<b>1.5</b>" in html  # 0.75 + 0.75
+    t = web.timesheet_query(cfg, {"range": "nonsense", "account": "ghost", "round": "7"})
+    assert t["range"] == "this-week" and t["account"] == "" and t["round"] == 0
+    empty = web.page_timesheet(app, cfg, {"range": "custom", "from": "2020-01-01", "to": "2020-01-02"})
+    assert "No work recorded" in empty
+    too_long = web.page_timesheet(app, cfg, {"range": "custom", "from": "2020-01-01", "to": "2020-12-31"})
+    assert "at most 92 days" in too_long
