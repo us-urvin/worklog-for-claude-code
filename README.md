@@ -1,6 +1,6 @@
 # Worklog for Claude Code
 
-**A diary of your Claude Code work, written for you. See what you did each day and how many tokens it used.**
+**Your Claude Code work, written down for you: what you did each day, how long it took, and what it used.**
 
 [![Downloads](https://static.pepy.tech/badge/worklog-for-claude-code)](https://pepy.tech/project/worklog-for-claude-code)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
@@ -8,20 +8,28 @@
 [![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE)
 
-![Worklog: today's tokens, sessions and time, a 14-day chart and what you worked on](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
+![A tour of Worklog: today, project summaries, editing a project, trends, ask, timesheet and a share card](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
 
-▶️ **[Watch the 90-second video](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/media/worklog-demo.mp4)**
+▶️ **[Watch the 40-second tour](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/media/worklog-demo.mp4)**
 
-## What it does
+## What you get
 
-- ✅ **Writes down what you worked on**, project by project, every day, in plain words. Claude writes the summary.
-- 🧾 **Makes your timesheet**: hours per project with a plain-language line, to Excel or CSV in one click.
-- 📈 **Shows your trends** week by week, answers questions like *"When did I review PR 505?"*, and tells you where you left off.
-- 📱 **Works on your phone** through the GitHub app, from a summary kept in your private data repo.
-- 📊 **Shows how many tokens you used**, per day, account and model, with an estimate at API prices.
-- 👥 **Handles several Claude accounts and computers**, even if you switch accounts with a one-click app.
-- 🔒 **Stays private**: everything lives on your computer (and your own private git repo, if you want).
-- 💻 **Runs on Linux, macOS and Windows**, quietly in the background.
+**Every day**
+- ✍️ What you worked on, project by project, **in plain words**. Claude writes it with your own account.
+- 📍 **Where you left off**: your last projects, open tasks, PRs and tickets.
+- ✏️ Wrong project? **Fix it in two clicks**, and Worklog remembers.
+
+**Every week**
+- 🧾 A **timesheet** with hours, kind of work and one line per project. Download it for Excel or as CSV.
+- 📈 **Trends** compared with last week, in plain sentences, plus **goals** for hours and tokens.
+- 🔎 **Ask your worklog**: *"When did I review PR 505?"*
+
+**Anywhere**
+- 📱 On your **phone** through the GitHub app, from a summary in your private data repo.
+- 🖼️ A **card to share** your week. It shows totals only, never prompts or files.
+- 👥 Several **Claude accounts and computers**, even with one-click account switchers.
+
+🔒 **Private**: everything stays on your computer and in your own private git repo. 💻 Runs on **Linux, macOS and Windows**. ⚡ Light and fast.
 
 ## Try it (nothing is installed)
 
@@ -29,7 +37,7 @@
 pipx run --spec worklog-for-claude-code claude-worklog demo
 ```
 
-Open **http://localhost:8766** to see it with made-up data. Press **Ctrl+C** to stop.
+Open **http://localhost:8766** to look around with made-up data. Press **Ctrl+C** to stop.
 
 ## Install in 3 steps
 
@@ -50,45 +58,41 @@ claude-worklog install-service
 
 **3. Open http://worklog.localhost:8765** (or http://localhost:8765) and fill in the short form.
 
-A checklist then shows anything still missing, with the exact command for your computer. When everything is ticked, it disappears. That's it: use Claude Code as usual.
+A checklist shows anything still missing, with the exact command for your computer, and disappears when everything is ticked. Then just use Claude Code as usual.
 
 ## A closer look
 
 <table><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br>A timesheet, ready for Excel.</td>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag and Claude's task list"><br>Plain-language summaries, tags and Claude's tasks.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag, PR links and Claude's task list"><br><b>Every project, in plain words</b>, with tasks and PRs.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/leaveoff.png" alt="Goals and where you left off"><br><b>Goals and where you left off</b>, at the top of Today.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions, tokens and cost compared with last week, in plain sentences"><br>Trends, compared with last week.</td>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/ask.png" alt="Ask your worklog: search results for a question"><br>Ask your worklog.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions, tokens and cost compared with last week, in plain sentences"><br><b>Trends</b>, compared with last week.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/ask.png" alt="Ask your worklog: search results for a question"><br><b>Ask your worklog</b> anything about past work.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/leaveoff.png" alt="Goals and where you left off"><br>Goals, and where you left off.</td>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/share-card.jpg" alt="A share card: hours, sessions, projects and streak for the week"><br>A card to share your week.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br><b>A timesheet</b>, ready for Excel.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/share-card.jpg" alt="A share card: hours, sessions, projects and streak for the week"><br><b>A card to share</b> your week.</td>
 </tr></table>
 
 ## Privacy
 
-- Only short notes are saved: the first 300 characters of your prompts, token counts, file names and commit messages. Never your files or Claude's replies.
+- Only short notes are saved: the first 300 characters of your prompts, token counts, file names and commit messages. **Never your files or Claude's replies.**
 - Common secrets (API keys, passwords, e-mails) are blanked out before saving. This is best effort, so keep your data repo **private**.
-- Summaries are written by your own Claude account. Turn them off in Settings to stay fully offline.
+- Summaries and "Ask Claude" use your own Claude account. Turn AI off in Settings to stay fully offline.
 - The only other request: once a day, Worklog asks pypi.org whether a new version is out. Nothing about you is sent, and you can turn it off.
 
 [Privacy in detail →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 
 ## Questions
 
-**It says Sonnet, but I use Opus?** The "By model" list shows what Claude Code really used. To get better summaries, pick **Opus** in Settings → Summaries.
-
-**Several accounts or computers?** Settings walks you through it. For several computers, see [Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup).
-
-**Using several GitHub accounts?** GitHub knows you by your SSH key. In Settings → Private data repo, click **Test connection** to see which account signs in, and open *Several GitHub accounts on this computer?* for the steps. [More →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup)
-
-**Uploads to my data repo fail?** Click **Test connection** in Settings: it says what's wrong in plain words. See [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#uploads-fail-or-the-wrong-github-account-is-used).
-
 **Can I see it on my phone?** Yes. Turn on **Settings → On your phone** on one computer, then open your data repo's `phone` folder in the GitHub app. It stays private.
 
 **Wrong project on a card?** Click **✏️ Edit** to rename it or move the sessions. Worklog can remember the folder you always start in.
 
-**How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` and click **Restart now** on the page. Still the old version? [Restart it once](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version).
+**Several accounts, computers or GitHub accounts?** Settings walks you through it. **Test connection** shows which GitHub account your computer signs in as. See [Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup).
+
+**It says Sonnet, but I use Opus?** The "By model" list shows what Claude Code really used. For better summaries, pick **Opus** in Settings → Summaries.
+
+**How do I update?** Click **Update now** when the dashboard says a new version is out. From a terminal: `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`, then click **Restart now** on the page. ([Still the old version?](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version))
 
 **Something isn't working?** Run `claude-worklog doctor`, or see [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md).
 

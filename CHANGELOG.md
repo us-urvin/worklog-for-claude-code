@@ -25,6 +25,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 - **Faster pages for weeks and months**: a small per-day cache (about 2 KB a day) is read instead of every record,
   and a day is only read again when it changed.
+- **A new README, GIF and video**: grouped by what you get every day, every week and anywhere, with a steady
+  40-second tour built from still screens with captions (the old 97-second screen recording flickered).
 - **Dropdowns, checkboxes and date fields** follow the theme in dark and light mode. The top menu scrolls sideways on
   phones.
 
