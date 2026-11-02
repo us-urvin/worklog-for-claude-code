@@ -25,7 +25,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from . import __version__, chats, checks, daycache, forget, overrides, services, syncstatus, updates, viz, watcher
+from . import (
+    __version__,
+    chats,
+    checks,
+    daycache,
+    favicon,
+    forget,
+    overrides,
+    services,
+    syncstatus,
+    updates,
+    viz,
+    watcher,
+)
 from .collector import collect
 from .config import (
     _NAME_RE,
@@ -643,6 +656,8 @@ def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | 
     banners += extra
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{e(title)} – Worklog</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#0B0F24">
 <style>{CSS}</style></head><body data-fun="{1 if fun else 0}"><div class="wrap">
 <header><a class="brand" href="/">{LOGO}<span>Worklog</span></a><nav aria-label="Main">{nav}</nav></header>{banners}{body}{FOOTER}</div>
 <script nonce="{nonce}">{SCRIPT}</script></body></html>"""
@@ -2675,6 +2690,10 @@ def _fetch_answer(app: App, path: str, location: str | None, error: str | None) 
     return {"ok": True, "message": OK_MESSAGES.get(ok, "")}
 
 
+ICONS = {"/favicon.svg": (favicon.SVG.encode(), "image/svg+xml"), "/favicon.ico": (favicon.ICO, "image/x-icon"),
+         "/apple-touch-icon.png": (favicon.APPLE_PNG, "image/png")}
+
+
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
         server_version = "claude-worklog"
@@ -2725,6 +2744,15 @@ def make_handler(app: App):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_icon(self, data: bytes, ctype: str):
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=604800")  # a week: icons rarely change
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(data)
+
         def _redirect(self, location: str):
             self.send_response(303)
             self.send_header("Location", location)
@@ -2746,6 +2774,8 @@ def make_handler(app: App):
             try:
                 url = urlsplit(self.path)
                 q = {k: v[0] for k, v in parse_qs(url.query).items()}
+                if url.path in ICONS:  # the browser-tab icon (no config needed)
+                    return self._send_icon(*ICONS[url.path])
                 if url.path == "/api/status":
                     return self._send(200, json.dumps({**app.jobs.snapshot(), "version": __version__}),
                                       "application/json")

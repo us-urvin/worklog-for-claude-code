@@ -78,3 +78,17 @@ def test_fun_mode_off_removes_the_fun(home):
     assert 'class="clock"' in off and 'class="heat"' in off  # the charts stay
     page = web.layout("t", off, "day", "n", {}, fun=False)
     assert 'data-fun="0"' in page and "prefers-reduced-motion:reduce" in page
+
+
+def test_every_page_has_a_tab_icon():
+    import struct
+
+    from worklog import favicon, web
+    page = web.layout("Today", "", "day", "n", {})
+    assert '<link rel="icon" href="/favicon.svg" type="image/svg+xml">' in page
+    assert 'href="/favicon.ico"' in page and 'rel="apple-touch-icon"' in page
+    assert favicon.SVG.startswith("<svg") and favicon.SVG.endswith("</svg>")
+    reserved, kind, count = struct.unpack("<HHH", favicon.ICO[:6])
+    assert (reserved, kind, count) == (0, 1, 3)  # a real .ico with 16, 32 and 48 px images
+    assert favicon.APPLE_PNG.startswith(b"\x89PNG")
+    assert set(web.ICONS) == {"/favicon.svg", "/favicon.ico", "/apple-touch-icon.png"}

@@ -19,6 +19,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   one computer after each sync. `claude-worklog digest`.
 - **Share cards** for a day, week, month or year (totals only; PNG download), **badges**, and **your year in review**.
 - **Goals**: hours per day and a weekly token limit, with rings on Today.
+- **A tab icon**: the Worklog logo in the browser tab (SVG, plus `favicon.ico` and an icon for phone home screens).
 - **More on each card**: PR and ticket numbers (linked; tickets via Settings → Links and cost), test runs and fixes,
   Claude's time against yours, and an estimate at API prices.
 
