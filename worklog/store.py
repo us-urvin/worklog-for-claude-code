@@ -14,6 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import syncstatus
 from .config import STATE_DIR, ConfigError
 from .locks import exclusive
 
@@ -61,10 +62,12 @@ class GitStore:
             return
         try:
             self._git("pull", "--rebase", "--autostash", timeout=90)
+            syncstatus.record("pull", True)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             # Offline, empty repo, or first run: work locally, sync next time.
             detail = getattr(exc, "stderr", "") or str(exc)
             log.warning("git pull failed (continuing locally): %s", detail.strip()[:300])
+            syncstatus.record("pull", False, detail)
             if (self.path / ".git" / "rebase-merge").exists() or (self.path / ".git" / "rebase-apply").exists():
                 self._git("rebase", "--abort", check=False)
 
@@ -85,9 +88,11 @@ class GitStore:
             return
         try:
             self._git("push", "-q", "-u", "origin", "HEAD", timeout=90)
+            syncstatus.record("push", True)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             detail = getattr(exc, "stderr", "") or str(exc)
             log.warning("git push failed; commit kept locally and retried next run: %s", detail.strip()[:300])
+            syncstatus.record("push", False, detail)
 
     # ----------------------------------------------------------------- files
     def _target(self, rel: str) -> Path:

@@ -25,8 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, forget, services, updates, viz, watcher
-from .collector import collect, sanitize_remote
+from . import __version__, chats, checks, forget, services, syncstatus, updates, viz, watcher
+from .collector import collect
 from .config import (
     _NAME_RE,
     CONFIG_PATH,
@@ -287,7 +287,8 @@ background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);
 .danger-zone{border-color:color-mix(in srgb,var(--bad) 60%,var(--rule))!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent),var(--shadow)}
 .danger-zone h2{color:var(--bad)}.danger-zone ul{margin:6px 0 12px;padding-left:1.2em}.danger-zone li{margin:4px 0}
 button.danger-solid{background:#C2334B;color:#fff;box-shadow:none}
-#forget,#logins,#checklist,#add{scroll-margin-top:96px}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
+#forget,#logins,#checklist,#add,#data-repo{scroll-margin-top:96px}
+#data-repo .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
 .notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
@@ -895,7 +896,18 @@ def top_panels(app: App, cfg: Config, active: str = "") -> str:
                            f'<a class="btn" href="/settings#checklist">Fix it</a></span></div>' for x in broken)
         elif active != "settings":  # Settings shows the full checklist in its own section
             out += checklist_html(app, items)
-    return out + _notices_html(app, cfg)
+    return out + _public_repo_warning(cfg) + _notices_html(app, cfg)
+
+
+def _public_repo_warning(cfg: Config) -> str:
+    """Shown on every page while the data repo is public (from the last check, never waits for the network)."""
+    r = syncstatus.remote(cfg)
+    if not r or syncstatus.cached_visibility(r["host"], r["slug"]) != "public":
+        return ""
+    return (f'<div class="notice hook" role="alert"><span class="ico" aria-hidden="true">⚠️</span><span class="txt">'
+            f'<b>Your data repo {e(r["host"])}/{e(r["slug"])} is public.</b> Anyone can read your prompts and project names. '
+            f'Make it private on GitHub.</span><span class="acts"><a class="btn" href="/settings#data-repo">How</a>'
+            f'</span></div>')
 
 
 MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)"),
@@ -988,16 +1000,74 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             f'device.</p>{body}')
 
 
+def _ago(ts: float | None) -> str:
+    if not ts:
+        return "never"
+    s = max(0, int(time.time() - ts))
+    for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if s >= size:
+            n = s // size
+            return f"{n} {unit}{'s' * (n != 1)} ago"
+    return "just now"
+
+
+def data_repo_section(app: App, cfg: Config) -> str:
+    """Connected or not, to which repo, private or not, and whether uploads work."""
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    st = syncstatus.status(cfg)
+    folder = e(home_relative(cfg.store_repo))
+    if not st["is_repo"]:
+        body = (f'<div class="meta"><span class="pill bad">Not set up</span><span class="muted"><code>{folder}</code> '
+                f'is not a git folder yet.</span></div><p class="help" style="margin-top:10px">Create it with '
+                f'<code>git init {folder}</code>, or clone your private repo there.</p>')
+        return f'<section class="block" id="data-repo"><h2>Private data repo</h2>{body}</section>'
+    buttons = (f'<div class="row"><form method="post" action="/action/collect">{c}<button>Sync now</button></form>'
+               f'<form method="post" action="/sync/test">{c}<button class="quiet">Test connection</button></form></div>')
+    if not st["remote"]:
+        body = (f'<div class="meta"><span class="pill">Local only</span><span class="muted">Not connected. Your log '
+                f'stays in <code>{folder}</code> on this computer and isn&#39;t backed up.</span></div>'
+                f'<p class="help" style="margin-top:10px">Using Claude Code on more than one computer, or want a backup? '
+                f'Create an <b>empty, private</b> repo on GitHub, GitLab or Bitbucket and connect this folder to it:</p>'
+                f'<div class="cmdrow"><pre class="cmd">git -C {folder} remote add origin git@github.com:YOU/claude-worklog-data.git</pre>'
+                f'<button type="button" class="quiet copy" data-copy="git -C {folder} remote add origin '
+                f'git@github.com:YOU/claude-worklog-data.git">Copy</button></div>'
+                f'<p class="help"><a href="https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup" '
+                f'target="_blank" rel="noopener noreferrer">Step-by-step guide ↗</a> (including a key so the background '
+                f'service can upload without a password)</p>')
+        return f'<section class="block" id="data-repo"><h2>Private data repo</h2>{body}</section>'
+    vis = syncstatus.cached_visibility(st.get("host"), st.get("slug"))
+    if vis is None:  # ask GitHub in the background; the page never waits for it
+        threading.Thread(target=syncstatus.visibility, args=(st["host"], st["slug"]), daemon=True).start()
+    privacy = {"private": '<span class="pill ok">🔒 Private</span>',
+               "public": '<span class="pill bad">⚠️ PUBLIC: anyone can read your log</span>',
+               "unknown": '<span class="pill">Privacy not checked (only possible for GitHub)</span>',
+               None: '<span class="pill">Checking privacy…</span>'}[vis]
+    push, pull = st["push"], st["pull"]
+    if push and not push["ok"]:
+        health = (f'<span class="pill bad">Last upload failed</span><span class="muted">{_ago(push["at"])}: '
+                  f'{e(push["error"][:160])}</span>')
+    elif pull and not pull["ok"]:
+        health = (f'<span class="pill bad">Last download failed</span><span class="muted">{_ago(pull["at"])}: '
+                  f'{e(pull["error"][:160])}</span>')
+    elif push:
+        health = f'<span class="pill ok">Synced</span><span class="muted">last upload {_ago(push["at"])}</span>'
+    else:
+        health = '<span class="pill">Not uploaded yet</span><span class="muted">the next sync uploads your log</span>'
+    waiting = (f'<span class="muted">· {st["waiting"]} change{"s" * (st["waiting"] != 1)} waiting to upload</span>'
+               if st["waiting"] else "")
+    warn = ('<p class="state-bad" style="margin:10px 0 0"><b>This repo is public.</b> Your prompts, project names and '
+            'commit messages can be read by anyone. Make it private in the repo&#39;s settings on GitHub '
+            '(Settings → General → Danger Zone → Change visibility).</p>' if vis == "public" else "")
+    return f"""<section class="block" id="data-repo"><h2>Private data repo</h2>
+<div class="meta"><span class="pill ok">Connected</span><span>to <a href="{e(st["web_url"])}" target="_blank"
+rel="noopener noreferrer"><b>{e(st["remote"])}</b> ↗</a></span>{privacy}</div>
+<div class="meta" style="margin-top:8px">{health}{waiting}</div>{warn}
+<p class="muted" style="font-size:.85rem;margin:10px 0 0">Folder <code>{folder}</code> · branch <code>{e(st["branch"])}</code>
+· last change {e(st["last_change"] or "none yet")}</p>{buttons}</section>"""
+
+
 def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
-    store = _store(cfg)
-    if store:
-        remotes = [sanitize_remote(u) for u in _git_out(cfg.store_repo, "remote", "get-url", "origin").splitlines()]
-        remote = next((f"{r['host']}/{r['slug']}" for r in remotes if r), "none (local only)")
-        last = _git_out(cfg.store_repo, "log", "-1", "--format=%cr") or "no commits yet"
-        store_state = f'<span class="state-ok">Connected</span>. Remote: {e(remote)}. Last change {e(last)}.'
-    else:
-        store_state = '<span class="state-bad">Not a git clone.</span> Clone your private data repo into this folder.'
 
     logins = detected_logins()
     by_dir = cfg.accounts_by_dir()
@@ -1064,6 +1134,8 @@ def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
 
 {"" if services.demo_mode() else checklist_html(app, checks.cached(cfg, running), "Setup checklist")}
 
+{data_repo_section(app, cfg)}
+
 <section class="block"><h2>Account switching and extras</h2>
 <p class="help">While Worklog runs, it notices when you switch Claude accounts (with <code>/login</code> or any one-click
 account tool) and when a new Claude folder appears, so sessions are counted under the right account even without a hook.
@@ -1093,7 +1165,8 @@ account tool) and when a new Claude folder appears, so sessions are counted unde
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{e(cfg.device)}" required pattern="{NAME_PATTERN}">
 <p class="muted" style="font-size:.85rem">Renaming files new sessions under the new name. Earlier days keep the old one.</p>
 <label for="store">Data repo folder</label><input type="text" id="store" name="store" value="{e(home_relative(cfg.store_repo))}" required>
-<p style="font-size:.9rem">{store_state}</p><div class="row"><button>Save changes</button></div></form></section>
+<p class="muted" style="font-size:.85rem">Connection and sync status: see <a href="#data-repo">Private data repo</a>.</p>
+<div class="row"><button>Save changes</button></div></form></section>
 
 <section class="block"><h2>Background services</h2><p class="help">These keep running after you close the browser and start again when you log in.</p>
 <div class="tablewrap"><table><tr><th>Service</th><th>State</th></tr>{svc_rows}</table></div>
@@ -1158,6 +1231,14 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/sync/test":
+            def job():
+                ok, msg = syncstatus.test_connection(cfg)
+                if not ok:
+                    raise RuntimeError(msg)
+                return msg
+            started = self.jobs.start("Testing the connection", job)
+            return ("/settings?ok=job#data-repo" if started else "/settings#data-repo"), None, form
         if path == "/accounts/forget":
             return self._forget(cfg, form)
         if path == "/accounts/add-folder":

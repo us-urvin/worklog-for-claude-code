@@ -57,6 +57,8 @@ claude-worklog install-service --no-report   # on every other machine
 
 **4. Open <http://worklog.localhost:8765>** and finish setup: pick a unique device name, set the data repo (paste `worklog-git:<you>/claude-worklog-data.git` and it is cloned for you), and add your first account. Then press **Install hook** for each account in Settings.
 
+**Settings → Private data repo** shows whether this folder is connected, to which repo (with a link), whether that repo is really private (checked with GitHub's public API for GitHub repos; a public repo is flagged on every page), when the last upload worked or why it failed, and how many changes are waiting. **Test connection** checks that this computer can reach the repo without a password prompt.
+
 Already started with a local-only repo from the quick start? Connect it with `git -C ~/claude-worklog-data remote add origin worklog-git:<you>/claude-worklog-data.git`. The next sync pushes to it.
 
 `install-service` sets up three things that start whenever you log in. No admin rights are needed on any system:

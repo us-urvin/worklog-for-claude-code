@@ -11,6 +11,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   sessions on this device, the saved summaries of those projects, and the account linked only to that login, after a
   confirmation that lists exactly what will be lost. Forgotten sessions are never collected again; Claude Code's own
   files are never touched.
+- **Settings → Private data repo**: connected or local only, which repo (linked), whether it is really private
+  (GitHub repos are checked; a public repo is flagged on every page), when the last upload worked or why it failed,
+  how many changes wait to upload, and a **Test connection** button.
 
 ## [0.3.0] - 2026-10-29
 

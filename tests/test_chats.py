@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from worklog import chats, cli, identity, store, web
+from worklog import chats, cli, identity, store, syncstatus, web
 from worklog.config import ConfigError, dump_config, load_config
 from worklog.report import aggregate, render
 
@@ -73,7 +73,7 @@ def home(tmp_path, monkeypatch):
                      ("APPDATA", "AppData/Roaming"), ("LOCALAPPDATA", "AppData/Local")):
         monkeypatch.setenv(var, str(h / sub) if sub else str(h))
     state = h / ".local/state/claude-worklog"
-    for mod in (identity, store, cli, chats):
+    for mod in (identity, store, cli, chats, syncstatus):
         monkeypatch.setattr(mod, "STATE_DIR", state)
     assert Path.home() == h
     return h
