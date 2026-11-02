@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from xml.sax.saxutils import escape
 
 from . import overrides
-from .report import aggregate, load_saved_summaries, plain_line
+from .report import aggregate, legacy_fit, pick_summary, summary_line, summary_metas
 from .store import GitStore
 
 MAX_DAYS = 92
@@ -76,21 +76,20 @@ def build(store: GitStore, start: date, end: date, *, time_mode: str = "active",
                    if isinstance(r, dict) and (not account or r.get("account") == account)]
         if records:
             _, projects = aggregate(records, ov, time_mode)
-            saved = load_saved_summaries(store, d).get("summaries", {})
+            metas = summary_metas(store, d)
             for key, p in projects.items():
                 if project and key != project:
                     continue
-                s = saved.get(key) or {}
+                sm, fit, _ = pick_summary(metas, key, [x["id"] for x in p.sessions_list], legacy_fit(p, projects))
+                if fit == "other":
+                    sm = {}
                 mine = ov.lines.get(f"{d.isoformat()}|{key}")
-                line = mine or s.get("line") or ""
-                if not line and s.get("bullets"):
-                    line = str(s["bullets"][0]).removeprefix("- ")
-                summarized = bool(mine or (line and s.get("source") == "ai"))
-                edited_tag = any(ov.tags.get(x["id"]) for x in p.sessions_list)
-                rows.append(Row(d, p.name, key, p.minutes,
-                                (p.tag if edited_tag else s.get("tag") or p.tag) or "",
-                                line or plain_line(p), summarized, sorted(p.accounts), sorted(p.devices),
-                                p.sessions + p.chats, sum(p.tokens.values()), p.approx))
+                summarized = bool(mine or sm.get("source") == "ai")
+                mine_tags = [ov.tags.get(x["id"]) for x in p.sessions_list if ov.tags.get(x["id"])]
+                tag = max(set(mine_tags), key=mine_tags.count) if mine_tags else sm.get("tag") or ""
+                rows.append(Row(d, p.name, key, p.minutes, tag, summary_line(sm, p, mine), summarized,
+                                sorted(p.accounts), sorted(p.devices), p.sessions + p.chats, sum(p.tokens.values()),
+                                p.approx))
         d += timedelta(days=1)
     rows.sort(key=lambda r: (r.day, -r.minutes, r.project))
     return rows

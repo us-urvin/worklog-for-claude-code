@@ -47,12 +47,14 @@ from .identity import detected_logins, mask_email
 from .report import (
     aggregate,
     build_report,
-    load_saved_summaries,
+    legacy_fit,
     model_rows,
-    plain_line,
+    pick_summary,
     plain_summary,
     project_key,
     project_title,
+    summary_line,
+    summary_metas,
 )
 from .store import GitStore
 from .tags import TAGS
@@ -671,6 +673,15 @@ def _summary_age(meta: dict) -> float:
         return 0.0
 
 
+def card_tag(p, s: dict, ov) -> str | None:
+    """The tag on a card: yours if you set one, else the one Claude chose when it wrote the summary.
+    Worklog's own guess from keywords isn't shown: it was often wrong (a review of PRs read as Research)."""
+    mine = [ov.tags.get(x["id"]) for x in p.sessions_list if ov.tags.get(x["id"])]
+    if mine:
+        return max(set(mine), key=mine.count)
+    return s.get("tag") or None
+
+
 def _tasks_html(p, s: dict) -> str:
     """Claude's to-do items for this project and day, with Copy; or the summary's suggested next steps."""
     if p.tasks:
@@ -709,7 +720,7 @@ def _guess_html(app: App, day: date, p) -> str:
             f'<button class="quiet">No</button></form></span></div>')
 
 
-def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov, line: str) -> str:
+def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov, line: str, ai_tag: str = "") -> str:
     """The "Edit" popup for one card: rename, move (all or some sessions), folder rule, tag, timesheet line."""
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
     choices = [(k, q.name) for k, q in projects.items() if k != p.key]
@@ -737,8 +748,8 @@ def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov
                 "".join(f'<option value="{e(f)}">{e(f)}</option>' for f in folders) + "</select>")
         rule = (f'<div class="check"><input type="checkbox" id="rule" name="rule" value="1"><label for="rule">Always put '
                 f'sessions started in {pick} into that project on this computer (also for past days)</label></div>')
-    auto = p.tag or "Feature"
-    tag_opts = f'<option value="auto">Automatic ({e(auto)})</option>' + "".join(
+    auto = f"Automatic ({ai_tag}, from the summary)" if ai_tag else "Automatic (set when the summary is written)"
+    tag_opts = f'<option value="auto">{e(auto)}</option>' + "".join(
         f'<option value="{t}"{" selected" if any(ov.tags.get(x["id"]) == t for x in p.sessions_list) else ""}>{t}</option>'
         for t in TAGS)
     return f"""<section class="block edit-card" id="edit" aria-labelledby="edit-title">
@@ -868,8 +879,8 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
     records = list(store.iter_json(f"records/{day.isoformat()}"))
     ov = overrides.load(store.path)
     accounts, projects = aggregate(records, ov, cfg.time_mode)
-    saved_meta = load_saved_summaries(store, day)
-    saved = saved_meta.get("summaries", {})
+    metas = summary_metas(store, day)
+    saved = metas[0].get("summaries", {}) if metas else {}
 
     history_days = [day - timedelta(days=i) for i in reversed(range(HISTORY_DAYS))]
     history, names = [], [a.name for a in cfg.accounts]
@@ -972,19 +983,23 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
         '</div>')
 
     entries = []
-    summarized_at = _summary_age(saved_meta)
     edit_html = ""
     for p in sorted(projects.values(), key=lambda p: (p.kind == "chat", p.kind == "misc", -sum(p.tokens.values()))):
-        s = saved.get(p.key) or {}
-        stale = ov.stale.get(f"{day.isoformat()}|{p.key}", 0) > summarized_at
+        s, fit, written = pick_summary(metas, p.key, [x["id"] for x in p.sessions_list], legacy_fit(p, projects))
+        if fit == "other":  # written for other sessions (moved since): don't show someone else's story
+            s = {}
+        stale = fit == "partial" or ov.stale.get(f"{day.isoformat()}|{p.key}", 0) > _summary_age({"generated_at": written})
         bullets = s["bullets"] if s.get("bullets") else plain_summary(p)
-        if not s:
+        if fit == "other":
+            src = "Your prompts. The saved summary was about other sessions: press “Rewrite summaries”."
+        elif not s:
             src = "Your prompts. Press “Write summaries” for a written summary."
         elif stale:
-            src = "Summary out of date: sessions were moved. Press “Rewrite summaries”."
+            src = "Summary out of date: sessions were moved or added. Press “Rewrite summaries”."
         else:
             src = "Summary by Claude" if s.get("source") == "ai" else "Your prompts"
-        line = ov.lines.get(f"{day.isoformat()}|{p.key}") or s.get("line") or plain_line(p)
+        mine = ov.lines.get(f"{day.isoformat()}|{p.key}")
+        line = summary_line(s, p, mine)
         if s.get("paragraph"):
             items = (f'<p class="para">{e(s["paragraph"])}</p><details><summary>Details</summary><ul>'
                      + "".join(f"<li>{e(b[2:] if b.startswith('- ') else b)}</li>" for b in bullets) + "</ul></details>")
@@ -1017,20 +1032,19 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
         if p.files:
             extra += ('<details><summary>Files edited</summary><ul>'
                       + "".join(f"<li><code>{e(f)}</code></li>" for f in sorted(p.files)[:60]) + "</ul></details>")
-        edited_tag = any(ov.tags.get(x["id"]) for x in p.sessions_list)
-        tag = (p.tag if edited_tag else s.get("tag") or p.tag) if p.sessions or p.chats else None
+        tag = card_tag(p, s, ov)
         edit_url = f"/?d={day.isoformat()}&edit={quote(p.key, safe='')}"
         head_row = (f'<div class="cardhead"><h3>{e(p.name)}</h3>'
                     + (f'<span class="pill tag">{e(tag)}</span>' if tag else "")
                     + f'<a class="btn quiet edit" href="{edit_url}#edit" data-popup="edit" '
                       f'aria-label="Edit {e(p.name)}">✏️ Edit</a></div>')
         tline = (f'<div class="tline"><span class="muted">Timesheet:</span> {e(line)}</div>'
-                 if s or ov.lines.get(f"{day.isoformat()}|{p.key}") else "")
+                 if s.get("source") == "ai" or mine else "")
         entries.append(f'<article class="entry">{head_row}<div class="where">{where}</div>{_guess_html(app, day, p)}'
                        f'{items}{tline}{_tasks_html(p, s)}<div class="src">{e(src)}</div><dl class="facts">{dl}</dl>'
                        f'{extra}</article>')
         if edit_key == p.key:
-            edit_html = _edit_form(app, day, p, projects, known, ov, line)
+            edit_html = _edit_form(app, day, p, projects, known, ov, line, s.get("tag") or "")
 
     acct_rows = "".join(
         f'<tr><td><i style="display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;'
@@ -1946,8 +1960,8 @@ class App:
             edits["tags"].update({i: tag for i in ids if ov.tags.get(i) != tag})
         line = " ".join(form.get("line", "").split())[:160]
         if line != (ov.lines.get(here) or ""):
-            saved = load_saved_summaries(store, day).get("summaries", {}).get(p.key) or {}
-            auto_line = saved.get("line") or plain_line(p)
+            picked, fit, _ = pick_summary(summary_metas(store, day), p.key, ids, legacy_fit(p, projects))
+            auto_line = summary_line(picked if fit != "other" else {}, p)
             edits["lines"][here] = None if not line or line == auto_line else line
         edits = {k: v for k, v in edits.items() if v}
         if edits:

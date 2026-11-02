@@ -363,7 +363,7 @@ def test_timesheet_rows_use_summaries_edits_and_filters(repo):
     assert [(r.day.isoformat(), r.project, r.minutes) for r in rows] == [
         ("2026-11-02", "xoo", 50), ("2026-11-02", "R&D / misc", 40), ("2026-11-03", "xoo", 20)]
     assert rows[0].summary == "Added the item quantity field" and rows[0].summarized and rows[0].tag == "Feature"
-    assert not rows[1].summarized and rows[1].tag == "Review"
+    assert not rows[1].summarized and rows[1].tag == ""  # no summary yet: no guessed tag
     assert ts.missing_days(rows) == [_date(2026, 11, 2), _date(2026, 11, 3)]
     overrides.change(store, "Office", {"lines": {"2026-11-02|misc:R&D / misc": "Code review of PR #505"},
                                        "rules": {"~/development": "github.com/xoikospos/xoo"}})
@@ -572,3 +572,63 @@ def test_collect_end_to_end_review_started_outside_the_repo(home, repo):
     x = projects["github.com/xoikospos/xoo"]
     assert x.name == "xoo" and x.tag == "Review"
     assert xoo.exists()
+
+
+# ------------------------------------------------------------------ 0.4.1: the right summary, line and tag
+from worklog.report import ProjectDay, pick_summary, plain_line, summary_line  # noqa: E402
+
+
+def _pd(prompts):
+    p = ProjectDay("k", "xoo", "git", None)
+    p.prompts = [("09:00", q) for q in prompts]
+    return p
+
+
+def test_timesheet_line_never_falls_back_to_a_one_word_prompt():
+    """Screenshot: summaries from before 0.4.0 had no line, so "Approve" became the timesheet line."""
+    p = _pd(["Approve", "yes", "Pull every In Progress task assigned to me on the XOO board"])
+    assert plain_line(p) == "Pull every In Progress task assigned to me on the XOO board"
+    old = {"source": "ai", "bullets": ["- Reviewed the PRs listed as subtasks under XOO2-295. Then more.", "- x"]}
+    assert summary_line(old, p) == "Reviewed the PRs listed as subtasks under XOO2-295"
+    assert summary_line({"source": "ai", "line": "Reviewed PRs for XOO2-295"}, p) == "Reviewed PRs for XOO2-295"
+    assert summary_line(old, p, mine="My own line") == "My own line"
+    assert plain_line(_pd(["ok"])) == "ok" and plain_line(_pd([])) == "Work in Claude Code"
+
+
+def test_a_summary_written_for_other_sessions_is_not_shown():
+    """Screenshot: R&D / misc showed the PR #505 review summary, but that session had moved to xoo."""
+    metas = [{"generated_at": "2026-11-02T23:30:00+00:00",
+              "summaries": {"misc:R&D / misc": {"source": "ai", "bullets": ["- Reviewed PR #505"],
+                                                "sessions": ["pr505"]}}}]
+    assert pick_summary(metas, "misc:R&D / misc", ["mic"])[1] == "other"
+    assert pick_summary(metas, "misc:R&D / misc", ["pr505"])[1] == "ok"
+    assert pick_summary(metas, "misc:R&D / misc", ["pr505", "mic"])[1] == "partial"
+    assert pick_summary(metas, "nope", ["x"])[1] == "none"
+    legacy = [{"generated_at": "2026-11-01T23:30:00+00:00", "summaries": {"k": {"bullets": ["- a"]}}}]
+    assert pick_summary(legacy, "k", ["x"])[1] == "ok"  # before 0.4.1 summaries didn't list their sessions
+    both = [{"generated_at": "2026-11-03", "summaries": {"k": {"sessions": ["a"], "line": "new, partial"}}},
+            {"generated_at": "2026-11-02", "summaries": {"k": {"sessions": ["a", "b"], "line": "older, complete"}}}]
+    assert pick_summary(both, "k", ["a", "b"])[0]["line"] == "older, complete"  # the one that covers everything
+
+
+def test_cards_show_only_claudes_or_your_tag(day_app, repo):
+    app, cfg = day_app
+    body, _ = web.page_day(app, cfg, D1)
+    assert body.count('class="pill tag"') == 1  # xoo has Claude's "Feature"; the unsummarized card has none
+    overrides.change(GitStore(repo), "Office", {"tags": {"b": "Review"}})
+    assert web.page_day(app, cfg, D1)[0].count('class="pill tag"') == 2
+
+
+def test_old_misc_summary_is_hidden_after_its_session_moved_to_the_real_project(day_app, repo):
+    """The exact screenshot: an old R&D / misc summary about PR #505, while misc now holds only a mic question."""
+    app, cfg = day_app
+    store = GitStore(repo)
+    moved = dict(XOO, detected_by="commands", started_in="~/development")
+    _put(store, "2026-11-02", "Office", "work", _rec("pr505", "14:00", "14:40", project=moved, active=40,
+                                                   prompts=["/code-review 505 with proper check"]))
+    store.write_json("reports/2026-11-02/HP.json", {"generated_at": "2026-11-01T23:59:00+00:00", "summaries": {
+        "misc:R&D / misc": {"source": "ai", "bullets": ["- Reviewed PR #505 and posted a comment"]}}})
+    body, _ = web.page_day(app, cfg, D1)
+    assert "Reviewed PR #505 and posted a comment" not in body
+    assert "The saved summary was about other sessions" in body
+    assert "Summary out of date" in body  # xoo's older summary misses the moved-in review
