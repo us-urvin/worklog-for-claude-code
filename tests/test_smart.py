@@ -120,8 +120,12 @@ def test_subagent_lists_are_ignored(tmp_path):
 
 # ------------------------------------------------------------------ finding the project
 def test_command_places():
-    dirs, slugs = command_places('cd xoo && gh pr checkout 505 -R xoikospos/xoo; git -C "/a b/c" log', "/home/u/dev")
-    assert dirs == ["/home/u/dev/xoo", "/a b/c"] and slugs == ["xoikospos/xoo"]
+    from pathlib import Path
+    base = Path.home() / "dev"
+    other = Path.home() / "a b" / "c"
+    dirs, slugs = command_places(f'cd xoo && gh pr checkout 505 -R xoikospos/xoo; git -C "{other.as_posix()}" log',
+                                 str(base))
+    assert [Path(d) for d in dirs] == [base / "xoo", other] and slugs == ["xoikospos/xoo"]
     assert command_places("cd $TMP && ls; cd -", "/x") == ([], [])
     assert command_places("gh pr view 1 --repo=me/app", None) == ([], ["me/app"])
 
@@ -516,10 +520,55 @@ def test_timesheet_page_and_downloads(day_app, repo):
                                          "details": "1"})
     assert "Added the item quantity field" in html and "(not summarized)" in html
     assert "Write missing summaries" in html and "fmt=xlsx" in html and 'data-copy="Date\tProject' in html
-    assert "<th>Accounts</th>" in html and "<b>1.5</b>" in html  # 0.75 + 0.75
+    assert "<th>Accounts</th>" in html and "<b>1.50</b>" in html  # 0.75 + 0.75
     t = web.timesheet_query(cfg, {"range": "nonsense", "account": "ghost", "round": "7"})
     assert t["range"] == "this-week" and t["account"] == "" and t["round"] == 0
     empty = web.page_timesheet(app, cfg, {"range": "custom", "from": "2020-01-01", "to": "2020-01-02"})
     assert "No work recorded" in empty
     too_long = web.page_timesheet(app, cfg, {"range": "custom", "from": "2020-01-01", "to": "2020-12-31"})
     assert "at most 92 days" in too_long
+
+
+def test_collect_end_to_end_review_started_outside_the_repo(home, repo):
+    """A real transcript through collect(): the screenshot's PR review lands in xoo with its tasks and active time."""
+    from test_accounts import make_cfg
+
+    from worklog.collector import collect
+    dev = home / "development"
+    xoo = _repo(dev / "xoo", "git@github.com:xoikospos/xoo.git")
+    cfg = make_cfg(home, repo)
+    day = datetime.now().astimezone().replace(hour=10, minute=0, second=0, microsecond=0)
+    ts = lambda m: (day + timedelta(minutes=m)).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")  # noqa: E731
+    sid = "11111111-2222-3333-4444-555555555555"
+    base = {"sessionId": sid, "cwd": str(dev)}
+    lines = [
+        dict(base, type="user", uuid="u1", timestamp=ts(0),
+             message={"role": "user", "content": "/code-review 505 with proper check all conversation and commits"}),
+        dict(base, type="assistant", uuid="a1", timestamp=ts(1), requestId="r1",
+             message={"id": "m1", "model": "claude-opus-5-5", "usage": {"input_tokens": 100, "output_tokens": 50},
+                      "content": [{"type": "tool_use", "id": "b1", "name": "Bash",
+                                   "input": {"command": "cd xoo && gh pr checkout 505"}}]}),
+        dict(base, type="assistant", uuid="a2", timestamp=ts(2), requestId="r2",
+             message={"id": "m2", "model": "claude-opus-5-5", "usage": {"input_tokens": 10, "output_tokens": 5},
+                      "content": [{"type": "tool_use", "id": "t1", "name": "TaskCreate",
+                                   "input": {"subject": "Post the review comment on PR 505"}}]}),
+        dict(base, type="user", uuid="u2", timestamp=ts(2.1), message={"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "Task #1 created successfully"}]}),
+        dict(base, type="user", uuid="u3", timestamp=ts(3),
+             message={"role": "user", "content": "<task-notification>\n<task-type>x</task-type>\n"}),
+        dict(base, type="user", uuid="u4", timestamp=ts(9), message={"role": "user", "content": "post this comment"}),
+    ]
+    folder = home / ".claude/projects/-home-development"
+    folder.mkdir(parents=True)
+    (folder / f"{sid}.jsonl").write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+    collect(cfg, [day.date()])
+    rec = next(GitStore(repo).iter_json(f"records/{day.date().isoformat()}"))
+    assert rec["project"]["remote"] == {"host": "github.com", "slug": "xoikospos/xoo"}
+    assert rec["project"]["detected_by"] == "commands" and rec["project"]["started_in"] == "~/development"
+    assert rec["prompts"] == ["/code-review 505 with proper check all conversation and commits", "post this comment"]
+    assert rec["tasks"] == [{"text": "Post the review comment on PR 505", "status": "open"}]
+    assert rec["active_minutes"] == 9
+    _, projects = aggregate([rec])
+    x = projects["github.com/xoikospos/xoo"]
+    assert x.name == "xoo" and x.tag == "Review"
+    assert xoo.exists()

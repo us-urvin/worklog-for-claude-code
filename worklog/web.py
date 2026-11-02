@@ -404,10 +404,10 @@ border:1px dashed color-mix(in srgb,var(--accent) 55%,var(--rule));background:va
 .edit-card label:first-of-type{margin-top:4px}.edit-card .help{margin:4px 0 0!important;font-size:.85rem}
 fieldset.sessions{border:1px solid var(--rule);border-radius:12px;margin:14px 0 0;padding:6px 12px}
 fieldset.sessions legend{font-size:.88rem;font-weight:600;padding:0 6px}fieldset.sessions .check{margin:8px 0}
-dialog.dlg .popup-body label{margin-top:12px}dialog.dlg .popup-body input[type=text],dialog.dlg .popup-body select{max-width:none}
+dialog.dlg .popup-body label{margin-top:12px}dialog.dlg .popup-body .check label{margin:0}dialog.dlg .popup-body input[type=text],dialog.dlg .popup-body select{max-width:none}
 .tsform{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:flex-end;margin:16px 0 18px}.tsform label{margin:0 0 6px}
-.tsform select,.tsform input[type=date]{width:auto}.tsform .check{margin:0 0 10px}
-table.sheet td{white-space:normal;vertical-align:top}table.sheet td:first-child{white-space:nowrap}
+.tsform select,.tsform input[type=date]{width:auto}.tsform .check{margin:0 0 10px;align-self:flex-end}
+table.sheet td,table.sheet th{white-space:normal;vertical-align:top;text-align:left}table.sheet td:first-child{white-space:nowrap}
 table.sheet .num{text-align:right;white-space:nowrap}table.sheet td.sum{min-width:260px;text-align:left}
 table.sheet th{text-align:left}table.sheet tfoot td{border-top:2px solid var(--rule);font-weight:700}
 .exports{margin:0 0 14px}
@@ -823,7 +823,7 @@ def page_timesheet(app: App, cfg: Config, q: dict) -> str:
     body_rows = []
     for r in rows:
         cells = [f'<td><a href="/?d={r.day.isoformat()}">{r.day:%a %d %b}</a></td>', f"<td>{e(r.project)}</td>",
-                 f'<td class="num">{"≈" if r.approx else ""}{r.hours(rnd):g}</td>',
+                 f'<td class="num">{"≈" if r.approx else ""}{r.hours(rnd):.2f}</td>',
                  "<td>" + (f'<span class="pill tag">{e(r.tag)}</span>' if r.tag else "") + "</td>",
                  f'<td class="sum">{e(r.summary)}' + ("" if r.summarized else ' <span class="muted">(not summarized)</span>')
                  + "</td>"]
@@ -834,9 +834,9 @@ def page_timesheet(app: App, cfg: Config, q: dict) -> str:
     heads = "".join(f'<th{" class=num" if h in ("Hours", "Sessions", "Tokens") else ""}>{h}</th>'
                     for h in ts.COLUMNS + (ts.EXTRA if extra else ()))
     table = (f'<div class="tablewrap"><table class="sheet"><thead><tr>{heads}</tr></thead><tbody>{"".join(body_rows)}'
-             f'</tbody><tfoot><tr><td>Total</td><td></td><td class="num"><b>{total:g}</b></td>'
+             f'</tbody><tfoot><tr><td>Total</td><td></td><td class="num"><b>{total:.2f}</b></td>'
              f'<td colspan="{2 + (4 if extra else 0)}"></td></tr></tfoot></table></div>')
-    per = "".join(f"<li><span>{e(n)}</span><b>{h:g} h</b></li>" for n, h in ts.totals(rows, rnd))
+    per = "".join(f"<li><span>{e(n)}</span><b>{h:.2f} h</b></li>" for n, h in ts.totals(rows, rnd))
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
     missing = ts.missing_days(rows)
     write = ""

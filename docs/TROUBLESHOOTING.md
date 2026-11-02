@@ -14,6 +14,8 @@ Lines starting with ✓ are fine. Lines starting with ✗ show the problem. If n
 - [Nothing shows up for today](#nothing-shows-up-for-today)
 - [There are no summaries, only lists of prompts](#there-are-no-summaries-only-lists-of-prompts)
 - [It shows Sonnet, but I use Opus](#it-shows-sonnet-but-i-use-opus)
+- [A session is under the wrong project](#a-session-is-under-the-wrong-project)
+- [Timesheet hours look too low or too high](#timesheet-hours-look-too-low-or-too-high)
 - [A session is counted under the wrong account](#a-session-is-counted-under-the-wrong-account)
 - [My other computer doesn't show up](#my-other-computer-doesnt-show-up)
 - [Uploads fail, or the wrong GitHub account is used](#uploads-fail-or-the-wrong-github-account-is-used)
@@ -71,6 +73,14 @@ There are two different places a model shows up:
 
 - **The By model list** on a day shows the model Claude Code itself wrote down for each reply. If it says Sonnet, Claude Code really ran those replies on Sonnet: your plan's default, a `/model` choice, or a sub-agent (the list says how much came from sub-agents). Run `claude-worklog doctor`: it prints each account's default model (`default model: …`).
 - **The daily summaries** are written by `claude -p`. Open **Settings → Summaries** and set **Model for summaries** to **Opus**. `claude-worklog doctor` shows the model in use (`summaries are written with: …`).
+
+## A session is under the wrong project
+
+Click **✏️ Edit** on the card and pick the right project under **Move to another project**, or **New project…**. If you always start Claude Code in the same folder (like `~/development`), tick **Always put sessions started in … into that project**, and Worklog will remember it. A card asking **"Probably …?"** just needs a **Yes** or **No**. Sessions from before 0.4.0 were recorded without the extra clues, so moving them yourself is the fix for those.
+
+## Timesheet hours look too low or too high
+
+Hours are **active time**: gaps over 15 minutes between messages are breaks, and sessions at the same time count once. Waiting a long time for Claude, or reading without typing, can count as a break. To count from the first to the last message instead, set `time = "wall"` in the `[report]` section of the config. Days from before 0.4.0 are marked "≈" and always use first to last message.
 
 ## A session is counted under the wrong account
 

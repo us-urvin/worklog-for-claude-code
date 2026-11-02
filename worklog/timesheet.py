@@ -115,6 +115,10 @@ def _cells(r: Row, round_to: int, extra: bool) -> list:
     return cells
 
 
+def _text(v) -> str:
+    return f"{v:.2f}" if isinstance(v, float) else str(v)
+
+
 def _header(extra: bool) -> list[str]:
     return list(COLUMNS + (EXTRA if extra else ()))
 
@@ -131,27 +135,27 @@ def to_csv(rows: list[Row], round_to: int = 0, extra: bool = False) -> bytes:
     w = csv.writer(buf, lineterminator="\r\n")
     w.writerow(_header(extra))
     for r in rows:
-        w.writerow([_safe(c) for c in _cells(r, round_to, extra)])
+        w.writerow([_safe(_text(c)) for c in _cells(r, round_to, extra)])
     return ("\ufeff" + buf.getvalue()).encode("utf-8")  # the BOM makes Excel read UTF-8 correctly
 
 
 def to_tsv(rows: list[Row], round_to: int = 0, extra: bool = False) -> str:
     """Pastes into Google Sheets, Excel or Jira tables as columns."""
-    clean = lambda v: str(_safe(v)).replace("\t", " ").replace("\n", " ")  # noqa: E731
+    clean = lambda v: _safe(_text(v)).replace("\t", " ").replace("\n", " ")  # noqa: E731
     lines = ["\t".join(_header(extra))]
     lines += ["\t".join(clean(c) for c in _cells(r, round_to, extra)) for r in rows]
     return "\n".join(lines) + "\n"
 
 
 def to_markdown(rows: list[Row], round_to: int = 0, extra: bool = False) -> str:
-    clean = lambda v: str(v).replace("|", "\\|").replace("\n", " ")  # noqa: E731
+    clean = lambda v: _text(v).replace("|", "\\|").replace("\n", " ")  # noqa: E731
     head = _header(extra)
     out = ["| " + " | ".join(head) + " |", "|" + "|".join("---:" if h in ("Hours", "Sessions", "Tokens") else "---"
                                                           for h in head) + "|"]
     out += ["| " + " | ".join(clean(c) for c in _cells(r, round_to, extra)) + " |" for r in rows]
     if rows:
         total = round(sum(r.hours(round_to) for r in rows), 2)
-        out.append("| **Total** |  | **" + f"{total:g}" + "** |" + " |" * (len(head) - 3))
+        out.append("| **Total** |  | **" + f"{total:.2f}" + "** |" + " |" * (len(head) - 3))
     return "\n".join(out) + "\n"
 
 

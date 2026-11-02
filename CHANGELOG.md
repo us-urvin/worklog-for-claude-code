@@ -6,6 +6,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
+### Added
+- **Timesheet** page and `claude-worklog timesheet`: one row per day and project with hours, the kind of work and a
+  one-line summary. This or last week or month, or custom days; filter by account; round to 15 or 30 minutes. Download
+  Excel (.xlsx) or CSV, or copy as a table or Markdown. **Write missing summaries** fills the gaps.
+- **Summaries in plain words**: a short paragraph a manager or client can read, a timesheet line, details and
+  suggested next steps, from the same single `claude -p` call per project as before.
+- **Kind of work** tags on every card (Feature, Bug fix, Review, Refactor, Docs, Tests, Research, Planning, Release,
+  Chat), guessed from your prompts and files, suggested by Claude with the summary, and yours to change.
+- **Claude's to-do lists** on the cards (TodoWrite and the task tools), with **Copy checklist** and **Copy as text**.
+- **✏️ Edit** on each card: rename a project, move all or some sessions to another or a new project, add a rule for
+  a folder you always start in, set the kind of work or the timesheet line, and undo. Saved in the data repo
+  (`overrides/<device>.json`) so every computer agrees; records are never changed.
+
+### Changed
+- **Finds the project of sessions started outside a repo** (for example in `~/development`): from other folders the
+  session ran in, the files it edited, the folders its commands worked in, or `gh -R owner/repo`. When two repos are
+  equally likely, the card asks **"Probably …?"**.
+- **Worktrees show under the repo's name**, so `xoo-fix-qty` counts as **xoo**.
+- **Time is active time**: breaks over 15 minutes and parallel sessions no longer inflate hours. Older days are marked
+  "≈". `[report] time = "wall"` restores first-to-last-message time.
+
+### Fixed
+- System messages such as `<task-notification>` no longer show up as your prompts, also on days already recorded.
+
 ## [0.3.2] - 2026-11-02
 
 ### Fixed
@@ -122,7 +148,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.3.0
