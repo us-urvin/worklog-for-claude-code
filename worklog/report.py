@@ -116,6 +116,7 @@ class ProjectDay:
     started_in: set[str] = field(default_factory=set)  # home-relative folders the misc sessions started in
     guess: dict | None = None  # "Probably xoo?" for sessions that found no repo
     moved: bool = False  # sessions were moved here or a rule applied
+    detected: bool = False  # a session here was found by 0.4.0's detection (it started outside this repo)
 
     @property
     def tag(self) -> str | None:
@@ -203,6 +204,7 @@ def aggregate(records: list[dict], ov: Overrides | None = None, time_mode: str =
             p = projects[key] = ProjectDay(key, ov.names.get(key) or project_title(info), str(info.get("kind")),
                                            info.get("remote"))
         p.moved = p.moved or bool(moved_to)
+        p.detected = p.detected or (proj.get("detected_by") in ("cwd-other", "files", "commands") and not moved_to)
         p.accounts.add(r.get("account", "?"))
         p.devices.add(r.get("device", "?"))
         if is_chat(r):
@@ -320,7 +322,7 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> dict | None:
         return None
     data = {
         "project": p.name, "kind": p.kind, "branches": sorted(p.branches), "folders": sorted(p.folders),
-        "minutes_worked": p.minutes, "likely_kind_of_work": p.tag,
+        "minutes_worked": p.minutes,
         "chats": [{"title": c["title"], "your_messages": c["prompts"], "chat_summary": c["summary"]}
                   for c in p.chat_items],
         "prompts_in_order": [q for _, q in p.prompts],
@@ -342,7 +344,10 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> dict | None:
         'triaged the mobile item-quantity bug\'",\n'
         ' "paragraph": "2-4 plain sentences about the day\'s work on this project",\n'
         ' "bullets": ["2-7 short points: what was built, fixed, reviewed or decided"],\n'
-        f' "tag": "one of: {", ".join(TAGS)}",\n'
+        f' "tag": "the ONE kind of work that took most of the time, one of: {", ".join(TAGS)}. Review = reviewing '
+        'pull requests or someone else\'s code, or triaging tickets; Bug fix = finding and fixing a problem; '
+        'Feature = building something new; Research = reading, asking or comparing without changing code; '
+        'Planning = deciding what to do or writing a plan; Release = shipping, deploying, versions or CI setup",\n'
         ' "next": ["open items still to do, if the data shows any; else an empty list"]}\n\n'
         f"<data>\n{blob}\n</data>"
     )
@@ -366,13 +371,77 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> dict | None:
     return parsed
 
 
+def _clip(text: str, n: int = 120) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[: n - 1].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
 def plain_line(p: ProjectDay) -> str:
-    """A one-line description without AI: the chat titles or the first prompt."""
+    """A one-line description without AI: the chat titles, or the first prompt that says something
+    (one-word answers such as "Approve" or "yes" are skipped)."""
     if p.chat_items:
-        text = "; ".join(c["title"] for c in p.chat_items[:3])
-    else:
-        text = p.prompts[0][1].splitlines()[0] if p.prompts else "Work in Claude Code"
-    return text if len(text) <= 120 else text[:119].rsplit(" ", 1)[0] + "…"
+        return _clip("; ".join(c["title"] for c in p.chat_items[:3]))
+    firsts = [q.splitlines()[0].strip() for _, q in p.prompts if q.strip()]
+    good = next((q for q in firsts if len(q.split()) >= 4), firsts[0] if firsts else "Work in Claude Code")
+    return _clip(good)
+
+
+def summary_line(s: dict | None, p: ProjectDay, mine: str | None = None) -> str:
+    """The timesheet line: yours if you wrote one, else Claude's, else the first point of an older summary
+    (written before 0.4.0, without a line), else a plain line from your prompts."""
+    if mine:
+        return mine
+    s = s or {}
+    if s.get("line"):
+        return str(s["line"])
+    bullets = [str(b).removeprefix("- ") for b in s.get("bullets") or [] if str(b).strip()]
+    if s.get("source") == "ai" and bullets:
+        return _clip(bullets[0].split(". ")[0].rstrip("."))
+    return plain_line(p)
+
+
+def summary_metas(store: GitStore, day: date) -> list[dict]:
+    """Every device's saved summaries for `day`, newest first."""
+    metas = [m for m in store.iter_json(f"reports/{day.isoformat()}") if isinstance(m, dict)]
+    return sorted(metas, key=lambda m: str(m.get("generated_at", "")), reverse=True)
+
+
+def legacy_fit(p: ProjectDay, projects: dict[str, ProjectDay]) -> str:
+    """How far to trust a summary written before 0.4.1 (it doesn't say which sessions it covers).
+
+    0.4.0 started filing sessions that began outside a repo under their real project. On a day where that
+    happened, an older "R&D / misc" summary probably describes a session that has moved away ("other"),
+    and the project it moved into is missing it ("partial"). Other days are fine.
+    """
+    if not any(q.detected for q in projects.values()):
+        return "ok"
+    if p.kind == "misc":
+        return "other"
+    return "partial" if p.detected else "ok"
+
+
+def pick_summary(metas: list[dict], key: str, ids: list[str], legacy: str = "ok") -> tuple[dict, str, str]:
+    """The saved summary that fits a card best: (summary, status, generated_at).
+
+    Summaries written from 0.4.0 on list the sessions they cover. status is "ok" when one covers all of
+    the card's sessions (or predates that list), "partial" when the best one covers only some (sessions
+    were added or moved in since), and "other" when it covers none of them: it describes different work,
+    for example after a session was moved to another project. Then the summary isn't shown at all.
+    """
+    want = set(ids)
+    candidates = [(m, (m.get("summaries") or {}).get(key)) for m in metas]
+    candidates = [(m, sm) for m, sm in candidates if isinstance(sm, dict)]
+    if not candidates:
+        return {}, "none", ""
+    for m, sm in candidates:  # newest first: the newest one that covers everything
+        covered = sm.get("sessions")
+        if not isinstance(covered, list):
+            return sm, legacy, str(m.get("generated_at", ""))
+        if want <= set(covered):
+            return sm, "ok", str(m.get("generated_at", ""))
+    m, sm = max(candidates, key=lambda c: (len(want & set(c[1].get("sessions") or [])), str(c[0].get("generated_at"))))
+    status = "partial" if want & set(sm.get("sessions") or []) else "other"
+    return sm, status, str(m.get("generated_at", ""))
 
 
 def chat_line(c: dict) -> str:
@@ -410,6 +479,7 @@ def summarize_all(projects: dict[str, ProjectDay], day: date, cfg: Config, use_a
         else:
             out[key] = {"bullets": plain_summary(p), "source": "plain", "line": plain_line(p), "paragraph": "",
                         "tag": "", "next": []}
+        out[key]["sessions"] = sorted(x["id"] for x in p.sessions_list)  # which sessions this summary covers
     return out
 
 

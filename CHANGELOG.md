@@ -6,6 +6,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-02
+
+### Fixed
+- **Timesheet lines** no longer show a short prompt such as "Approve" or an unrelated first question. Days summarized
+  before 0.4.0 use the first point of their summary until you press **Rewrite summaries**; without any summary, the
+  first prompt that says something is used.
+- **A summary written for other sessions is no longer shown on a card.** After 0.4.0 moved a session to its real
+  project (for example a PR review into **xoo**), the old summary stayed under "R&D / misc". Summaries now record
+  which sessions they cover; a card says when its summary is out of date.
+- **Tags**: only Claude's choice (made with the summary, now with clear rules for each kind of work) or yours is
+  shown. The keyword guess was often wrong, so it's gone.
+
 ### Added
 - `claude-worklog doctor` warns when the web page still runs an older version after an update, and prints the
   restart command for your system. Troubleshooting has a new entry for it.
@@ -152,7 +164,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...v0.3.1

@@ -191,9 +191,9 @@ When two repos are about equally likely, the card asks **"Probably xoo?"** with 
 
 **Undo my changes** puts everything back. Your corrections are saved in the data repo as `overrides/<device>.json` and sync to your other computers. Records themselves are never changed.
 
-**Kind of work (tags).** Each card gets one of: Feature, Bug fix, Review, Refactor, Docs, Tests, Research, Planning, Release or Chat. Worklog guesses it from your prompts and the files changed (a `/code-review` is a Review, only Markdown files is Docs, and so on), and Claude suggests one when it writes the summary. Change it with **Edit**.
+**Kind of work (tags).** Each card gets one of: Feature, Bug fix, Review, Refactor, Docs, Tests, Research, Planning, Release or Chat. Claude picks it when it writes the summary, from everything you did that day; until then the card has no tag. Change it any time with **Edit**: your choice always wins.
 
-**Summaries in plain words.** With AI summaries on, each card gets a short paragraph a manager or client can read. The details are underneath, along with a one-line **timesheet line** and any **suggested next steps**.
+**Summaries in plain words.** With AI summaries on, each card gets a short paragraph a manager or client can read. The details are underneath, along with a one-line **timesheet line** and any **suggested next steps**. Each summary remembers which sessions it covers: when sessions are moved or added later, the card says the summary is out of date, and a summary about other sessions is never shown. Days summarized before 0.4.0 have no timesheet line yet; until you press **Rewrite summaries**, the first point of the old summary is used.
 
 **Tasks.** If Claude kept a to-do list during the session, the card shows it: ✅ done and ⬜ still open, with **Copy checklist** (Markdown) and **Copy as text**. A task made on one day and finished the next shows as done on the day it was finished.
 
