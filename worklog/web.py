@@ -416,9 +416,10 @@ border-radius:16px;background:var(--glass);border:1px solid var(--rule)}.goal.ba
 .askbox{display:flex;gap:8px;margin:0 0 18px}.askbox input{max-width:none;flex:1}.askbox.compact{margin:14px 0 18px}
 .leaveoff h2{font-size:1rem;margin:0 0 10px}.leaves{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}
 @media (max-width:820px){.leaves{grid-template-columns:1fr}}
-a.leave{display:block;padding:14px 16px;border-radius:16px;background:var(--glass);border:1px solid var(--rule);color:var(--ink);
+div.leave{display:block;padding:14px 16px;border-radius:16px;background:var(--glass);border:1px solid var(--rule);color:var(--ink);
 text-decoration:none;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:border-color .2s,transform .2s}
-a.leave:hover{border-color:var(--accent);transform:translateY(-2px)}.leave .lh{display:flex;gap:8px;align-items:baseline}
+div.leave:hover{border-color:var(--accent);transform:translateY(-2px)}
+.leave .lh a{color:var(--ink);text-decoration:none}.leave .lh a:hover{color:var(--accent)}.leave .lh{display:flex;gap:8px;align-items:baseline}
 .leave .lh .muted{margin-left:auto;font-size:.82rem}.leave .ld{font-size:.9rem;margin:6px 0;color:var(--muted)}
 .leave .lt{list-style:none;padding:0;margin:6px 0 0;font-size:.85rem}.leave .lb{font-size:.8rem}.leave .refs{margin:6px 0 0}
 .delta{display:inline-block;font-size:.8rem;font-weight:700;margin-top:4px;color:var(--muted)}.delta.up{color:var(--ok)}.delta.down{color:var(--bad)}
@@ -896,11 +897,11 @@ def _leave_off_html(items: list[dict], cfg: Config) -> str:
             for r in (it.get("refs") or [])[:4])
         todo = "".join(f"<li>⬜ {e(t)}</li>" for t in (it.get("open") or [])[:3])
         branch = next((b for b in it.get("branches") or [] if b not in ("main", "master")), "")
-        cards.append(f'<a class="leave" href="/?d={it["day"].isoformat()}"><div class="lh"><b>{e(it["name"])}</b>'
+        cards.append(f'<div class="leave"><div class="lh"><a href="/?d={it["day"].isoformat()}"><b>{e(it["name"])}</b></a>'
                      f'<span class="muted">{e(when)}</span></div><div class="ld">{e(doing or "")}</div>'
                      + (f'<div class="refs">{refs}</div>' if refs else "")
                      + (f'<div class="muted lb">branch <code>{e(branch)}</code></div>' if branch else "")
-                     + (f'<ul class="lt">{todo}</ul>' if todo else "") + "</a>")
+                     + (f'<ul class="lt">{todo}</ul>' if todo else "") + "</div>")
     return (f'<section class="leaveoff" aria-label="Where you left off"><h2>Where you left off</h2>'
             f'<div class="leaves">{"".join(cards)}</div></section>')
 
@@ -972,7 +973,9 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
     entries = cache.days(series_start, min(end, today))
     cache.save()
     now = insights.period(entries, start, min(end, today), cfg.cost_custom)
-    before = insights.period(entries, prev_start, prev_end, cfg.cost_custom)
+    # A period still running is compared with the same number of days of the one before (Mon-Wed with Mon-Wed).
+    so_far = (min(end, today) - start).days
+    before = insights.period(entries, prev_start, min(prev_end, prev_start + timedelta(days=so_far)), cfg.cost_custom)
     series = []
     if view == "week":
         for i in range(8):
@@ -996,7 +999,7 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
     lines = "".join(f"<li>{e(x)}</li>" for x in insights.sentences(now, before, word))
     extra = []
     if now.refs:
-        extra.append(f'{len(now.refs)} pull request{"s" * (len(now.refs) != 1)} and tickets')
+        extra.append(f'{len(now.refs)} pull request{"s" * (len(now.refs) != 1)} or ticket{"s" * (len(now.refs) != 1)}')
     if now.tests_runs:
         extra.append(f"{now.tests_runs} test runs, {now.tests_fixed} fixed")
     if now.claude and now.minutes:

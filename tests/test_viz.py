@@ -67,6 +67,8 @@ def test_fun_mode_off_removes_the_fun(home):
     from worklog.demo import generate
     cfg = load_config(generate(home / "demo", days=14))
     day = date.today() - timedelta(days=1)
+    while day.weekday() >= 5:  # the demo has work on every weekday; weekends may be empty
+        day -= timedelta(days=1)
     on, _ = web.page_day(web.App(1), cfg, day)
     assert 'id="fun"' in on and 'class="fact"' in on and 'class="flame"' in on
     cfg.fun = False

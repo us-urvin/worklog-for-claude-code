@@ -27,7 +27,8 @@ MODELS = ("claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5")
 
 # name, host, slug (None = outside any git repo), account, weight, prompts, files, commits, summary bullets
 PROJECTS = [
-    {"name": "storefront", "host": "github.com", "slug": "acme-shop/storefront", "account": "work", "weight": 5,
+    {"name": "storefront", "refs": ["#41", "#44", "SHOP-112"],
+     "host": "github.com", "slug": "acme-shop/storefront", "account": "work", "weight": 5,
      "prompts": ["add a coupon field to the checkout form",
                  "why does the cart badge not update after removing an item?",
                  "write tests for the price formatter", "make the product grid responsive on small screens",
@@ -45,7 +46,8 @@ PROJECTS = [
      "bullets": ["Added a coupon field to checkout with inline validation.",
                  "Fixed the cart badge not refreshing after an item was removed.",
                  "Covered the price formatter with tests for rounding and currencies."]},
-    {"name": "payments-api", "host": "gitlab.com", "slug": "acme-shop/payments-api", "account": "work", "weight": 4,
+    {"name": "payments-api", "refs": ["#208", "PAY-77"],
+     "host": "gitlab.com", "slug": "acme-shop/payments-api", "account": "work", "weight": 4,
      "prompts": ["add idempotency keys to the refund endpoint", "explain this retry loop in the webhook worker",
                  "the settlement job times out on large batches, find out why", "add a migration for refund reasons"],
      "files": ["app/refunds/views.py", "app/webhooks/worker.py", "app/settlement/jobs.py",
@@ -60,7 +62,8 @@ PROJECTS = [
      "bullets": ["Made the refund endpoint idempotent using request keys.",
                  "Traced settlement timeouts to per-row queries and batched them.",
                  "Added a migration and tests for refund reasons."]},
-    {"name": "infra", "host": "github.com", "slug": "acme-shop/infra", "account": "work", "weight": 2,
+    {"name": "infra", "refs": ["#12"],
+     "host": "github.com", "slug": "acme-shop/infra", "account": "work", "weight": 2,
      "prompts": ["bump the staging node pool and add an autoscaling rule",
                  "write a runbook for rotating the DB password"],
      "files": ["terraform/staging/nodes.tf", "docs/runbooks/rotate-db-password.md"],
@@ -70,7 +73,8 @@ PROJECTS = [
                    "changing the database password."),
      "tasks": [],
      "bullets": ["Added autoscaling to the staging node pool.", "Wrote a runbook for rotating the database password."]},
-    {"name": "trail-map", "host": "github.com", "slug": "demo-user/trail-map", "account": "personal", "weight": 3,
+    {"name": "trail-map", "refs": ["#7"],
+     "host": "github.com", "slug": "demo-user/trail-map", "account": "personal", "weight": 3,
      "prompts": ["render GPX tracks on the map with elevation colors", "cache map tiles offline",
                  "add a dark theme toggle"],
      "files": ["src/map/tracks.js", "src/map/tiles.js", "src/ui/theme.css"],
@@ -79,7 +83,8 @@ PROJECTS = [
      "paragraph": "Showed hiking tracks on the map, colored by height, and made map tiles work offline.",
      "tasks": [("Color tracks by elevation", "done"), ("Offline tile cache", "open")],
      "bullets": ["Rendered GPX tracks colored by elevation.", "Added an offline cache for map tiles."]},
-    {"name": "R&D / misc", "host": None, "slug": None, "account": "personal", "weight": 2, "folder": "scratch",
+    {"name": "R&D / misc", "refs": [],
+     "host": None, "slug": None, "account": "personal", "weight": 2, "folder": "scratch",
      "prompts": ["compare three ways to debounce a search box", "summarize the tradeoffs of SQLite WAL mode",
                  "write a quick script to rename photos by date"],
      "files": ["~/scratch/debounce.js", "~/scratch/rename_photos.py"],
@@ -139,6 +144,13 @@ misc_label = "R&D / misc"
 [report]
 use_ai = false
 summarizer_account = "personal"
+
+[links]
+tracker = "https://example.atlassian.net/browse/"
+
+[goals]
+hours = 4
+weekly_tokens = 150000000
 """
 
 
@@ -165,6 +177,10 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
                for s in rng.sample(proj["commits"], k=min(len(proj["commits"]), rng.randint(0, 2)))]
     branches = ["main"] if not proj["slug"] else sorted({"main", rng.choice(["main", "feature/demo", "fix/demo"])})
     tasks = [{"text": t, "status": st} for t, st in proj.get("tasks", [])[: rng.randint(0, 3)]]
+    refs = rng.sample(proj.get("refs", []), k=min(len(proj.get("refs", [])), rng.randint(0, 2)))
+    runs = rng.choice([0, 0, 1, 2, 3]) if proj["slug"] else 0
+    failed = rng.randint(0, runs) if runs else 0
+    tests = {"runs": runs, "failed": failed, "fixed": min(failed, 1)} if runs else {}
     if proj["slug"]:
         project = {"kind": "git", "name": proj["name"], "path": f"~/code/{proj['name']}", "branches": branches,
                    "remote": {"host": proj["host"], "slug": proj["slug"]}}
@@ -179,7 +195,8 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
         "schema": 1, "session_id": f"demo-{day:%Y%m%d}-{device}-{n:02d}", "date": day.isoformat(),
         "account": proj["account"], "device": device, "project": project,
         "start": start.isoformat(timespec="seconds"), "end": end.isoformat(timespec="seconds"),
-        "span_minutes": minutes, "active_minutes": int(minutes * rng.uniform(0.55, 0.9)),
+        "span_minutes": minutes, "active_minutes": (active := int(minutes * rng.uniform(0.55, 0.9))),
+        "claude_minutes": int(active * rng.uniform(0.3, 0.6)), "refs": refs, "tests": tests,
         "api_calls": rng.randint(8, 120), "tokens": tokens,
         "tokens_by_model": by_model, "subagent_tokens_by_model": sub, "prompt_count": len(prompts), "prompts": prompts,
         "files_touched": files, "tool_calls": {"Read": rng.randint(3, 40), "Edit": rng.randint(1, 20),
@@ -209,7 +226,7 @@ def _chat_record(rng: random.Random, chat: dict, day: date, n: int, now: datetim
     }
 
 
-def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = None) -> Path:
+def generate(home: Path, days: int = 56, seed: int = 7, now: datetime | None = None) -> Path:
     """Write a fake HOME: config, empty Claude folders and a data repo with `days` of records.
 
     Returns the config file path. Only ever writes below `home`.

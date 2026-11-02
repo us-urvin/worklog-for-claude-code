@@ -80,8 +80,10 @@ def sentences(now: Period, before: Period, what: str = "week") -> list[str]:
     """3-5 plain sentences comparing two periods, worked out here (no AI)."""
     if not now.minutes and not now.sessions:
         return [f"No work recorded this {what} yet."]
+    same = " compared with this point last " + what if before.end - before.start < timedelta(days=6) else ""
+    change = _change(now.minutes, before.minutes)
     out = [f"This {what}: {_hours(now.minutes)} over {now.days_active} day{'s' * (now.days_active != 1)}"
-           f"{_change(now.minutes, before.minutes)}."]
+           + (change[:-1] + same + ")" if change and same else change) + "."]
     if now.projects:
         name, mins = now.projects.most_common(1)[0]
         share = round(100 * mins / max(1, now.minutes))
