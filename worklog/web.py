@@ -195,13 +195,13 @@ def _git_out(repo: Path, *args: str) -> str:
 
 # ================================================================== layout
 CSS = """
-:root{color-scheme:dark;--bg:#070B1A;--ink:#EEF2FF;--muted:#A3AECB;--rule:rgba(255,255,255,.11);--glass:rgba(22,28,56,.55);
+:root{--chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23A3AECB' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");--icon-filter:invert(.85);color-scheme:dark;--bg:#070B1A;--ink:#EEF2FF;--muted:#A3AECB;--rule:rgba(255,255,255,.11);--glass:rgba(22,28,56,.55);
 --glass-hi:rgba(255,255,255,.07);--field:rgba(8,12,30,.55);--accent:#9D8CFF;--accent-2:#38D9F5;--accent-3:#F57BC3;
 --ok:#4ADE9B;--bad:#FF8A9A;--on-accent:#0B0F24;--shadow:0 18px 50px rgba(0,0,0,.45);--glow:0 0 0 1px rgba(157,140,255,.35),0 8px 30px rgba(120,100,255,.25);
 --aurora-1:rgba(124,92,255,.62);--aurora-2:rgba(34,211,238,.45);--aurora-3:rgba(244,114,182,.38);
 font-family:"Inter","Ubuntu","Noto Sans","DejaVu Sans",system-ui,sans-serif;color:var(--ink);background:var(--bg);
 font-variant-numeric:tabular-nums;line-height:1.55;-webkit-font-smoothing:antialiased}
-@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#F4F6FF;--ink:#141936;--muted:#525C7A;--rule:rgba(20,25,54,.12);
+@media (prefers-color-scheme:light){:root{--chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23525C7A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");--icon-filter:none;color-scheme:light;--bg:#F4F6FF;--ink:#141936;--muted:#525C7A;--rule:rgba(20,25,54,.12);
 --glass:rgba(255,255,255,.62);--glass-hi:rgba(255,255,255,.75);--field:rgba(255,255,255,.85);--accent:#5B45F0;--accent-2:#0A7393;--accent-3:#C42A86;
 --ok:#047857;--bad:#BE123C;--on-accent:#fff;--shadow:0 14px 40px rgba(60,60,140,.14);--glow:0 0 0 1px rgba(91,69,240,.3),0 8px 26px rgba(91,69,240,.18);
 --aurora-1:rgba(140,110,255,.40);--aurora-2:rgba(56,217,245,.32);--aurora-3:rgba(245,123,195,.28)}}
@@ -219,7 +219,8 @@ header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;
 background:var(--glass);border:1px solid var(--rule);border-radius:18px;backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem;color:var(--ink);text-decoration:none;margin-right:auto;letter-spacing:-.01em}
 .brand svg{width:28px;height:28px;flex:none}
-nav{display:flex;gap:4px;background:var(--glass-hi);border:1px solid var(--rule);border-radius:999px;padding:4px}
+nav{display:flex;gap:4px;background:var(--glass-hi);border:1px solid var(--rule);border-radius:999px;padding:4px;max-width:100%;
+overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}nav::-webkit-scrollbar{display:none}nav a{flex:none;white-space:nowrap}
 nav a{color:var(--muted);text-decoration:none;padding:6px 14px;border-radius:999px;font-weight:600;font-size:.92rem}
 nav a:hover{color:var(--ink)}
 nav a[aria-current]{color:var(--on-accent);background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:var(--glow)}
@@ -277,11 +278,21 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none;filter:none}
 section.block{padding:22px 24px;margin-bottom:20px}
 section.block p.help{color:var(--muted);margin:0 0 14px;max-width:72ch}
 label{display:block;font-size:.88rem;font-weight:600;margin:14px 0 6px}
-input[type=text],input[type=date],select{font:inherit;width:100%;max-width:440px;padding:9px 12px;border:1px solid var(--rule);border-radius:12px;background:var(--field);color:var(--ink)}
+input[type=text],input[type=date],input[type=number],select,textarea{font:inherit;width:100%;max-width:440px;padding:9px 12px;min-height:44px;line-height:1.3;border:1px solid var(--rule);border-radius:12px;background-color:var(--field);color:var(--ink)}
+select{-webkit-appearance:none;appearance:none;padding-right:36px;cursor:pointer;background-image:var(--chev);background-repeat:no-repeat;background-position:right 13px center;background-size:12px 8px}
+select:hover,input[type=text]:hover,input[type=date]:hover,input[type=number]:hover,textarea:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--rule))}
+select option,select optgroup{background:var(--bg);color:var(--ink)}
+input[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.75;filter:var(--icon-filter)}
+input[type=number]{max-width:140px}
 input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:var(--glow)}
 input[type=file]{font:inherit;color:var(--muted);max-width:100%}
 input[type=file]::file-selector-button{font:inherit;font-weight:700;border:1px solid var(--rule);border-radius:10px;padding:7px 12px;margin-right:10px;background:var(--glass-hi);color:var(--ink);cursor:pointer}
-input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);flex:none;margin:2px 0 0}
+input[type=checkbox]{-webkit-appearance:none;appearance:none;width:20px;height:20px;flex:none;margin:1px 0 0;cursor:pointer;
+border:1.5px solid color-mix(in srgb,var(--ink) 28%,transparent);border-radius:6px;background:var(--field);transition:background .15s,border-color .15s,box-shadow .15s}
+input[type=checkbox]:hover{border-color:var(--accent)}
+input[type=checkbox]:checked{border-color:transparent;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px 14px no-repeat,linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:var(--glow)}
+input[type=checkbox]:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}
 .check{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.check label{margin:0;font-weight:500}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
 code,.cmd{font-family:"JetBrains Mono","Ubuntu Mono","DejaVu Sans Mono",monospace;font-size:.88em}
