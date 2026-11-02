@@ -38,6 +38,19 @@ def project_title(proj: dict) -> str:
     return str(proj.get("name") or "?")
 
 
+def legacy_minutes(r: dict, span: int) -> int:
+    """Time for a record from before 0.4.0, which only knows its first and last message.
+
+    A window left open all day would count as 16 hours, so long spans are estimated from the number of
+    Claude replies instead (about 1.5 minutes each), never more than the span. Re-reading the day
+    (Settings → Older days) replaces this with the real active time while Claude Code still has the logs.
+    """
+    calls = int(r.get("api_calls") or 0)
+    if span <= 90 or calls <= 0 or r.get("source") == "claude.ai":
+        return span
+    return max(90, min(span, round(calls * 1.5)))
+
+
 def _interval(r: dict) -> tuple[float, float] | None:
     try:
         a = datetime.fromisoformat(str(r.get("start"))).timestamp()
@@ -223,7 +236,7 @@ def aggregate(records: list[dict], ov: Overrides | None = None, time_mode: str =
         span = int(r.get("span_minutes") or 0)
         act = r.get("active_minutes")
         if not isinstance(act, int) or isinstance(act, bool):
-            act, p.approx = span, p.approx or not is_chat(r)
+            act, p.approx = legacy_minutes(r, span), p.approx or not is_chat(r)
         iv = _interval(r)
         if iv:
             spans.setdefault(key, []).append(iv)
