@@ -6,6 +6,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- `claude-worklog doctor` warns when the web page still runs an older version after an update, and prints the
+  restart command for your system. Troubleshooting has a new entry for it.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added

@@ -283,3 +283,36 @@ def test_our_hook_is_recognised_in_every_form():
         assert _is_ours(cmd), cmd
     for cmd in ("some-other-tool", "claude-worklog-helper hook", "claude-worklog hooked", None):
         assert not _is_ours(cmd), cmd
+
+
+# ------------------------------------------------------------------ "still running the old version" (doctor)
+def test_port_and_restart_command_per_os(monkeypatch, fake, home):
+    monkeypatch.setattr(services.sys, "platform", "linux")
+    monkeypatch.setattr(services, "UNIT_DIR", home / ".config/systemd/user")
+    assert services.configured_port() == 8765  # not installed yet: the default
+    services.install(9100, report=False)
+    assert services.configured_port() == 9100
+    assert services.restart_hint() == "systemctl --user restart claude-worklog-web"
+    monkeypatch.setattr(services.sys, "platform", "darwin")
+    monkeypatch.setattr(services, "AGENT_DIR", home / "Library" / "LaunchAgents")
+    monkeypatch.setattr(services.os, "getuid", lambda: 501, raising=False)
+    services.install(9200, report=False)
+    assert services.configured_port() == 9200
+    assert services.restart_hint() == "launchctl kickstart -k gui/$(id -u)/dev.worklog.web"
+    monkeypatch.setattr(services.sys, "platform", "win32")
+    assert "sign out" in services.restart_hint()
+
+
+def test_running_version_asks_the_page(monkeypatch):
+    import io
+
+    def page(req, timeout):
+        assert req.full_url == "http://127.0.0.1:8765/api/status"
+        return io.BytesIO(b'{"running": null, "version": "0.2.0"}')
+    monkeypatch.setattr("urllib.request.urlopen", page)
+    assert services.running_version(8765) == "0.2.0"
+
+    def down(req, timeout):
+        raise OSError("connection refused")
+    monkeypatch.setattr("urllib.request.urlopen", down)
+    assert services.running_version(8765) is None

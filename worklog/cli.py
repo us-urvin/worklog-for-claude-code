@@ -110,6 +110,17 @@ def cmd_doctor(args) -> int:
               "Run `claude-worklog install-service` again.")
     elif auto is not None:
         print(f"{'✓' if auto else '!'} starts at login: {'yes' if auto else 'no (run claude-worklog install-service)'}")
+    if auto:
+        port = services.configured_port()
+        running = services.running_version(port)
+        if running is None:
+            print(f"! web page: not answering on port {port}. Restart it: {services.restart_hint()}")
+        elif running != __version__:
+            ok = False
+            print(f"✗ web page: still running {running}, but {__version__} is installed. "
+                  f"Restart it once: {services.restart_hint()}")
+        else:
+            print(f"✓ web page: running {running} at http://worklog.localhost:{port}")
     return 0 if ok else 1
 
 

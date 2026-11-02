@@ -19,6 +19,7 @@ Lines starting with ✓ are fine. Lines starting with ✗ show the problem. If n
 - [A session is counted under the wrong account](#a-session-is-counted-under-the-wrong-account)
 - [My other computer doesn't show up](#my-other-computer-doesnt-show-up)
 - [Uploads fail, or the wrong GitHub account is used](#uploads-fail-or-the-wrong-github-account-is-used)
+- [I updated, but the page still shows the old version](#i-updated-but-the-page-still-shows-the-old-version)
 - [pipx says "already at latest version" but a newer one is out](#pipx-says-already-at-latest-version-but-a-newer-one-is-out)
 - [Token numbers look wrong after a Claude Code update](#token-numbers-look-wrong-after-a-claude-code-update)
 - [Reading the logs](#reading-the-logs)
@@ -93,6 +94,28 @@ Hours are **active time**: gaps over 15 minutes between messages are breaks, and
 ## My other computer doesn't show up
 
 Each computer has to sync to the same private data repo. See [Full setup](GUIDE.md#full-setup). On the other computer, run `claude-worklog doctor`. The `store repo` line should show a `remote`, not `none — local only`.
+
+## I updated, but the page still shows the old version
+
+The page is a program that keeps running in the background. After `pipx upgrade` it keeps showing the old version until it restarts. The footer at the bottom of the page shows which version is running.
+
+- **From 0.3.2 on**, the page notices and shows **Restart now**. Click it. (**Update now** on the dashboard restarts it by itself.)
+- **Updating from 0.3.1 or older?** That version doesn't have the button yet, so restart it once by hand:
+
+  ```bash
+  systemctl --user restart claude-worklog-web                 # Linux
+  launchctl kickstart -k gui/$(id -u)/dev.worklog.web          # macOS
+  ```
+
+  On Windows, sign out and back in (or restart the computer).
+
+Then reload the page. `claude-worklog doctor` tells you if the page is still running an older version, and gives the command for your system:
+
+```
+✗ web page: still running 0.2.0, but 0.4.0 is installed. Restart it once: systemctl --user restart claude-worklog-web
+```
+
+Hooks, the hourly sync and the nightly summaries start fresh each time, so they use the new version right away.
 
 ## pipx says "already at latest version" but a newer one is out
 

@@ -84,7 +84,7 @@ A checklist then shows anything still missing, with the exact command for your c
 
 **Wrong project on a card?** Click **✏️ Edit** to rename it or move the sessions. Worklog can remember the folder you always start in.
 
-**How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`.
+**How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` and click **Restart now** on the page. Still the old version? [Restart it once](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version).
 
 **Something isn't working?** Run `claude-worklog doctor`, or see [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md).
 
