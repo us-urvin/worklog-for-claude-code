@@ -90,9 +90,9 @@ def search(cache, question: str, today: date, limit: int = 15) -> list[dict]:
     hits = []
     for d, e in entries.items():
         for p in e.get("projects") or []:
-            fields = {"project": p["name"], "line": p.get("line", ""), "tag": p.get("tag", ""),
-                      "refs": " ".join(p.get("refs") or []), "tasks": " ".join(p.get("open") or []),
-                      "prompt": p.get("last_prompt", "")}
+            fields = {"project name": p["name"], "summary": p.get("line", ""), "kind of work": p.get("tag", ""),
+                      "PR or ticket": " ".join(p.get("refs") or []), "open tasks": " ".join(p.get("open") or []),
+                      "last prompt": p.get("last_prompt", "")}
             score = sum(_score(v, terms) for v in fields.values()) if terms else 0
             if score or (span and not terms):
                 why = [k for k, v in fields.items() if terms and _score(v, terms)]

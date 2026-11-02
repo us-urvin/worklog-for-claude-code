@@ -19,6 +19,9 @@ New to the terminal? Start with the [step-by-step guide](GETTING-STARTED.md). So
 - [Multiple accounts](#multiple-accounts)
 - [Projects, tags and tasks](#projects-tags-and-tasks)
 - [Timesheet](#timesheet)
+- [Trends, Ask and goals](#trends-ask-and-goals)
+- [On your phone](#on-your-phone)
+- [Share cards, badges and your year](#share-cards-badges-and-your-year)
 - [Command line](#command-line)
 - [Privacy in detail](#privacy)
 - [Limitations](#limitations)
@@ -214,6 +217,50 @@ claude-worklog timesheet --month this --format xlsx           # saves worklog-ti
 claude-worklog timesheet --from 2026-11-01 --to 2026-11-15 --account work --round 15 --format csv -o nov.csv
 ```
 
+## Trends, Ask and goals
+
+**Trends** (top menu) compares this week, or month, with the one before. While a week is still running, it's compared with the same days of last week. It shows:
+- hours per week (or month) as a chart; click a bar to look at that week
+- hours, sessions, tokens and the cost at API prices, each with the change in %
+- **In short**: a few plain sentences, worked out on your computer (no AI)
+- when you worked, your projects and the kind of work
+
+**Where you left off** sits at the top of Today: the last three projects, what you were doing (the summary line or your last prompt), PR and ticket numbers, the branch and open tasks.
+
+**Ask your worklog** (the box on Today and Trends) searches at once, on your computer. It looks in project names, summaries, PR and ticket numbers, open tasks and, if needed, your prompts. It understands phrases like "yesterday", "last week", "October" or "last 10 days". With AI summaries on, **Ask Claude** writes a short answer with links to the days. It reads a small excerpt of your saved notes for those days (never your code), using the account and model chosen for summaries. The last 20 answers stay on this computer. From the terminal: `claude-worklog ask "what did I do last week?"` (add `--claude` for a written answer).
+
+**More on each card**:
+- PR and ticket numbers such as `#505` or `XOO2-295`, found in your prompts, commands and branch names. `#505` links to the repo's pull request. Tickets link to your tracker once you set **Settings → Links and cost**.
+- **Tests**: how many test runs Claude did that day, and how many failing runs it fixed.
+- **Claude / you**: how much of the time Claude was working and how much was yours.
+- **At API prices**: what the tokens would cost at Anthropic's API prices. On Pro and Max plans this is only a comparison, because usage counts against your limits instead. A model without a known price is left out rather than guessed. Set other prices in the config:
+
+  ```toml
+  [cost]
+  "claude-opus-5-5" = [4.0, 20.0]   # input, output per million tokens
+  ```
+
+**Goals** (Settings → Goals): hours of work per day, and a weekly token limit to stay inside your plan. Today shows a ring for each. The token ring turns red at 80%. Meeting the hours goal several days in a row shows a goal streak; days off don't break it.
+
+**Speed.** Pages that look at weeks or months read a small per-day cache on this computer (`~/.local/state/claude-worklog/cache/days.json`, about 2 KB a day, at most 400 days). A day is read again only when its records, summaries or your corrections change. The cache is safe to delete: it's rebuilt the next time you open a page.
+
+## On your phone
+
+Worklog can keep a short summary page in your private data repo, made for the **GitHub app**. It has today, yesterday, this week's timesheet, where you left off and open tasks.
+
+1. On **one** computer, open **Settings → On your phone** and click **Write it from this computer**.
+2. On your phone, open the GitHub app, go to your data repo and tap the **`phone`** folder. GitHub shows its `README.md` right away.
+
+It updates after every sync (hourly, and when a session ends) and after the nightly summaries. It's only committed when something changed. Only one computer may write it, so two computers never edit the same file: if another computer wrote it in the last two days, turning it on elsewhere is refused. Your data repo's own `README.md` is never touched. `claude-worklog digest --stdout` prints it in the terminal.
+
+## Share cards, badges and your year
+
+**Share** (from Trends) turns a day, week, month or year into a 1200×630 image: hours, sessions, the number of projects, the kind of work, your streak and the top model. Project names appear only if you tick them. Prompts, files, accounts and e-mails never do. **Download PNG** saves it, and **Copy text** gives the same numbers as one line for a post.
+
+**Badges** (Trends, with Fun mode on) are worked out from your history, for example a 7-day streak, a night-owl session, or 5 failing test runs fixed in a week. A badge earned in the last week celebrates once.
+
+**Your year in review** (`/year`, linked from Trends) shows total hours, days worked, hours per month, top projects and kinds of work, your busiest day, your longest streak and your favourite model, with a card to share.
+
 ## Updating
 
 When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Updating from 0.3.1 or older, restart the page once by hand instead (`systemctl --user restart claude-worklog-web` on Linux, `launchctl kickstart -k gui/$(id -u)/dev.worklog.web` on macOS, sign out and back in on Windows); `claude-worklog doctor` warns when the page still runs an older version. See [Troubleshooting](TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version). Hooks and scheduled jobs start fresh every time, so they use the new version right away.
@@ -229,6 +276,8 @@ claude-worklog report --stdout                 # today's report in the terminal
 claude-worklog report --date 2026-09-25        # write reports/2026-09-25/<device>.md to the data repo
 claude-worklog report --no-ai                  # plain prompt lists, no claude -p
 claude-worklog timesheet --week last [--format md|tsv|csv|xlsx] [--account NAME] [--round 15]
+claude-worklog ask "when did I review PR 505?" [--claude]   # search, or a written answer from Claude
+claude-worklog digest [--stdout]                # write (or print) the phone summary
 claude-worklog collect --days 7                # backfill a week from this machine
 claude-worklog import-chats conversations-000.zip [--account NAME] [--since DATE]  # claude.ai export
 claude-worklog install-hook [--account NAME]   # add the Claude Code hooks (backs up settings.json)
@@ -246,6 +295,7 @@ records/<date>/<device>/<account>/<session>.json
 records/<date>/<device>/<account>/chat-<chat id>.json   # imported claude.ai chats
 reports/<date>/<device>.md
 overrides/<device>.json                                 # your renames, moves, rules, tags and timesheet lines
+phone/README.md                                         # the phone summary (one computer writes it)
 ```
 
 ## Privacy
@@ -257,6 +307,7 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 - project name, git remote as `host/owner/repo` (credentials always removed), branch names, and the project path relative to your home folder,
 - token counts per model, number of API calls and tool calls, and active minutes,
 - the items of Claude's own to-do list (redacted, at most 50 of 200 characters),
+- PR and ticket numbers, the number of test runs (and failed and fixed ones), and minutes Claude spent working,
 - your first 30 prompts in the session, **cut to 300 characters and redacted**,
 - paths of files Claude edited (relative to the repo, or to your home folder outside a repo), and the short hash and redacted subject of **your own** commits that day.
 

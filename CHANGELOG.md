@@ -6,6 +6,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-02
+
+### Added
+- **Trends** page: hours per week or month, the change against the same days before, a few plain sentences worked
+  out on your computer, when you worked, projects and kind of work.
+- **Ask your worklog**: an instant search on your computer (understands "last week", "October", PR numbers), and
+  **Ask Claude** for a short written answer from your saved notes, never your code. `claude-worklog ask`.
+- **Where you left off** on Today: your last three projects with what you were doing, PRs and tickets, branch and
+  open tasks.
+- **On your phone**: a summary page in your private data repo (`phone/README.md`) for the GitHub app, written by
+  one computer after each sync. `claude-worklog digest`.
+- **Share cards** for a day, week, month or year (totals only; PNG download), **badges**, and **your year in review**.
+- **Goals**: hours per day and a weekly token limit, with rings on Today.
+- **More on each card**: PR and ticket numbers (linked; tickets via Settings → Links and cost), test runs and fixes,
+  Claude's time against yours, and an estimate at API prices.
+
+### Changed
+- **Faster pages for weeks and months**: a small per-day cache (about 2 KB a day) is read instead of every record,
+  and a day is only read again when it changed.
+- **Dropdowns, checkboxes and date fields** follow the theme in dark and light mode. The top menu scrolls sideways on
+  phones.
+
+### Fixed
+- Settings were saved to the default config path instead of the file that was loaded (only mattered with a custom
+  config path).
+
 ## [0.4.1] - 2026-11-02
 
 ### Fixed
@@ -164,7 +190,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.1...v0.3.2

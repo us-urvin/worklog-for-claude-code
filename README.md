@@ -16,7 +16,9 @@
 
 - ✅ **Writes down what you worked on**, project by project, every day, in plain words. Claude writes the summary.
 - 🧾 **Makes your timesheet**: hours per project with a plain-language line, to Excel or CSV in one click.
-- 📊 **Shows how many tokens you used**, per day, account and model.
+- 📈 **Shows your trends** week by week, answers questions like *"When did I review PR 505?"*, and tells you where you left off.
+- 📱 **Works on your phone** through the GitHub app, from a summary kept in your private data repo.
+- 📊 **Shows how many tokens you used**, per day, account and model, with an estimate at API prices.
 - 👥 **Handles several Claude accounts and computers**, even if you switch accounts with a one-click app.
 - 🔒 **Stays private**: everything lives on your computer (and your own private git repo, if you want).
 - 💻 **Runs on Linux, macOS and Windows**, quietly in the background.
@@ -56,11 +58,11 @@ A checklist then shows anything still missing, with the exact command for your c
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br>A timesheet, ready for Excel.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag and Claude's task list"><br>Plain-language summaries, tags and Claude's tasks.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/insights.png" alt="When you worked, the last 5 weeks and today's projects"><br>When you worked, your streak, and where the time went.</td>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/checklist.png" alt="Setup checklist"><br>A setup checklist with steps for your system.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions, tokens and cost compared with last week, in plain sentences"><br>Trends, compared with last week.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/ask.png" alt="Ask your worklog: search results for a question"><br>Ask your worklog.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/notice.png" alt="New account found"><br>New accounts are noticed for you.</td>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/update.png" alt="A new version is out: Update now"><br>Updates in one click.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/leaveoff.png" alt="Goals and where you left off"><br>Goals, and where you left off.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/share-card.jpg" alt="A share card: hours, sessions, projects and streak for the week"><br>A card to share your week.</td>
 </tr></table>
 
 ## Privacy
@@ -81,6 +83,8 @@ A checklist then shows anything still missing, with the exact command for your c
 **Using several GitHub accounts?** GitHub knows you by your SSH key. In Settings → Private data repo, click **Test connection** to see which account signs in, and open *Several GitHub accounts on this computer?* for the steps. [More →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup)
 
 **Uploads to my data repo fail?** Click **Test connection** in Settings: it says what's wrong in plain words. See [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#uploads-fail-or-the-wrong-github-account-is-used).
+
+**Can I see it on my phone?** Yes. Turn on **Settings → On your phone** on one computer, then open your data repo's `phone` folder in the GitHub app. It stays private.
 
 **Wrong project on a card?** Click **✏️ Edit** to rename it or move the sessions. Worklog can remember the folder you always start in.
 

@@ -77,7 +77,7 @@ def test_cache_keeps_400_days(repo):
     c.entries.update({f"2026-{m:02d}-{d:02d}": {"n": 0, "sig": "x"} for m in range(1, 12) for d in range(1, 29)})
     c.dirty = True
     c.save()
-    kept = json.loads(daycache._path().read_text())["days"]
+    kept = json.loads(daycache._path().read_text(encoding="utf-8"))["days"]
     assert len(kept) == 400 and "2026-11-28" in kept and "2025-01-01" not in kept
 
 

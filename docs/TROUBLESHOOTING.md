@@ -22,6 +22,8 @@ Lines starting with ✓ are fine. Lines starting with ✗ show the problem. If n
 - [I updated, but the page still shows the old version](#i-updated-but-the-page-still-shows-the-old-version)
 - [pipx says "already at latest version" but a newer one is out](#pipx-says-already-at-latest-version-but-a-newer-one-is-out)
 - [Token numbers look wrong after a Claude Code update](#token-numbers-look-wrong-after-a-claude-code-update)
+- [The phone summary doesn't update](#the-phone-summary-doesnt-update)
+- [Trends or badges look wrong after an edit](#trends-or-badges-look-wrong-after-an-edit)
 - [Reading the logs](#reading-the-logs)
 
 ## command not found: claude-worklog
@@ -140,6 +142,20 @@ Open **Settings → Private data repo** and click **Test connection**. It shows 
 ## Token numbers look wrong after a Claude Code update
 
 Worklog reads Claude Code's log files, and their format isn't official, so an update can change them. Compare with another tool, such as `npx ccusage daily`, and [report it](https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose) with your Claude Code version (`claude --version`).
+
+## The phone summary doesn't update
+
+- Check **Settings → On your phone** on the computer that should write it: it must say *On: this computer writes it*.
+- It updates when that computer syncs. If it's asleep or off, the summary waits. Click **Sync now** there to update it right away.
+- Uploads must work: see **Settings → Private data repo**.
+
+## Trends or badges look wrong after an edit
+
+Worklog keeps a small per-day cache for these pages and rebuilds a day whenever its data changes. If something still looks off, delete the cache; it's rebuilt automatically:
+
+```bash
+rm ~/.local/state/claude-worklog/cache/days.json
+```
 
 ## Reading the logs
 

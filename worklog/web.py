@@ -908,8 +908,11 @@ def _leave_off_html(items: list[dict], cfg: Config) -> str:
 
 def _goal_html(cache, day: date, cfg: Config) -> str:
     from . import insights
+    if not cfg.goal_hours and not cfg.goal_tokens:
+        return ""  # no goals: don't even look at the history
     goals = {"hours": cfg.goal_hours, "tokens": cfg.goal_tokens}
-    g = insights.goal_progress(cache.days(day - timedelta(days=120), day), day, goals)
+    back = 120 if cfg.goal_hours else day.weekday()  # the streak needs history; the weekly limit only this week
+    g = insights.goal_progress(cache.days(day - timedelta(days=back), day), day, goals)
     if not g:
         return ""
     parts = []

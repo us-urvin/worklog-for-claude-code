@@ -69,7 +69,7 @@ def test_ask_dates_and_search(two_weeks):
     assert ask.date_range("when did I review it", t) is None
     c = daycache.DayCache(store)
     hits = ask.search(c, "when did I review PR #505?", TODAY)
-    assert hits[0]["project"] == "xoo" and hits[0]["day"] == monday and "refs" in hits[0]["why"]
+    assert hits[0]["project"] == "xoo" and hits[0]["day"] == monday and "PR or ticket" in hits[0]["why"]
     deep = ask.search(c, "payment iframe", TODAY)  # only in a prompt in the middle of the session
     assert deep and deep[0]["project"] == "xoo" and deep[0]["why"] == "your prompts"
     assert ask.search(c, "mic not working", TODAY)[0]["project"] == "R&D / misc"
@@ -142,7 +142,7 @@ def test_phone_summary_is_small_private_and_single_writer(two_weeks, home):
     assert digest.write(cfg, store) is False  # off by default
     cfg.phone_digest = True
     assert digest.write(cfg, store, today=TODAY) is True
-    text = (store.path / "phone/README.md").read_text()
+    text = (store.path / "phone/README.md").read_text(encoding="utf-8")
     assert text.startswith("<!-- worklog-phone device=Office") and "## This week" in text
     assert "| Day | Project |" in text
     assert "Confirm qty bug with Priti" in text and len(text.encode()) <= digest.MAX_BYTES
