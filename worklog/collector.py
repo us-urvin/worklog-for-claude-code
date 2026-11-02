@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import SUMMARIZER_CWD, Account, Config, home_relative
-from .identity import Identity, load_state, session_logins
+from .identity import Identity, forgotten_sessions, load_state, session_logins
 from .parser import ParseStats, SessionDay, parse_transcript
 from .redact import redact
 from .store import GitStore
@@ -181,6 +181,7 @@ def collect(cfg: Config, days: list[date]) -> int:
     store = GitStore(cfg.store_repo)
     logins: dict[str, Identity] = session_logins()  # local state written by the SessionStart hook
     watched = watch_state()  # login timeline kept by the watcher (covers sessions without a hook record)
+    forgotten = forgotten_sessions()  # deleted by "Forget this login": never written again
     written = 0
     with store.lock():
         store.pull()
@@ -198,6 +199,8 @@ def collect(cfg: Config, days: list[date]) -> int:
                     except OSError as exc:
                         log.warning("cannot read %s: %s", path, exc)
                 for sd in sessions.values():
+                    if sd.session_id in forgotten:
+                        continue
                     login = logins.get(sd.session_id)
                     source = "hook"
                     if login is None:

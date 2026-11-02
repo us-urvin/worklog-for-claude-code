@@ -104,7 +104,8 @@ def state_path() -> Path:
 
 
 def _empty() -> dict:
-    return {"version": STATE_VERSION, "sessions": {}, "logins": {}}
+    # forgotten: session id -> when it was forgotten. The collector never writes those sessions again.
+    return {"version": STATE_VERSION, "sessions": {}, "logins": {}, "forgotten": {}}
 
 
 def load_state(path: Path | None = None) -> dict:
@@ -123,6 +124,8 @@ def load_state(path: Path | None = None) -> dict:
     for key in ("sessions", "logins"):
         if isinstance(data.get(key), dict):
             state[key] = {k: v for k, v in data[key].items() if isinstance(k, str) and isinstance(v, dict)}
+    if isinstance(data.get("forgotten"), dict):
+        state["forgotten"] = {k: v for k, v in data["forgotten"].items() if isinstance(k, str) and isinstance(v, str)}
     return state
 
 
@@ -146,6 +149,7 @@ def _lock(path: Path, timeout: float):
 def _prune(state: dict, now: datetime) -> None:
     cutoff = (now - timedelta(days=KEEP_DAYS)).isoformat()
     state["sessions"] = {k: v for k, v in state["sessions"].items() if str(v.get("at", "")) >= cutoff}
+    state["forgotten"] = {k: v for k, v in state["forgotten"].items() if v >= cutoff}
 
 
 def record_session(session_id: str, config_dir: Path, ident: Identity | None, event: str,
@@ -210,6 +214,11 @@ def session_logins(path: Path | None = None) -> dict[str, Identity]:
             email = (logins.get(uid) or {}).get("email")
             out[sid] = Identity(uid, email if isinstance(email, str) else None)
     return out
+
+
+def forgotten_sessions(path: Path | None = None) -> set[str]:
+    """Sessions the user asked Worklog to forget: never collected again."""
+    return set(load_state(path)["forgotten"])
 
 
 def detected_logins(path: Path | None = None) -> list[dict]:

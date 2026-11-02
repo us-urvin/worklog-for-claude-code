@@ -57,6 +57,8 @@ claude-worklog install-service --no-report   # on every other machine
 
 **4. Open <http://worklog.localhost:8765>** and finish setup: pick a unique device name, set the data repo (paste `worklog-git:<you>/claude-worklog-data.git` and it is cloned for you), and add your first account. Then press **Install hook** for each account in Settings.
 
+**Settings → Private data repo** shows whether this folder is connected, to which repo (with a link), whether that repo is really private (checked with GitHub's public API for GitHub repos; a public repo is flagged on every page), when the last upload worked or why it failed, and how many changes are waiting. **Test connection** checks that this computer can reach the repo without a password prompt.
+
 Already started with a local-only repo from the quick start? Connect it with `git -C ~/claude-worklog-data remote add origin worklog-git:<you>/claude-worklog-data.git`. The next sync pushes to it.
 
 `install-service` sets up three things that start whenever you log in. No admin rights are needed on any system:
@@ -116,6 +118,7 @@ match_account_id = "…"       # or: match_email = "you@example.com"
 - Sessions match by account id, then e-mail (case-insensitive). Anything else, including sessions from before the hook was installed, goes to the folder's **default** account (the one without `match_*`).
 - Naming (or renaming) a login moves its sessions from the last 30 days to that account straight away. Days whose Claude Code logs are already deleted keep the old account. Only hook-recorded sessions are moved.
 - A login that is the only one ever seen in its own folder needs no name: it is simply counted as that folder's account.
+- **Forget a login** you don't want: click **Forget…** next to it. A confirmation lists exactly what goes: Worklog's records of that login's sessions on this device (found through the hook and the account watcher), the saved summaries of those projects, the account linked only to that login (its other sessions move to the folder's default account), and the login itself. Nothing happens until you tick "I understand". Claude Code's own files are never touched, records synced from other computers stay, and the old versions remain in the data repo's git history. Forgotten sessions are never collected again; if that account logs in later, its new sessions are tracked as usual.
 - Tracking is per session. If you `/login` to another account *inside* a running session, the session stays with the account it started with. Start a new session after switching.
 - Summaries run `claude -p` with whichever account is logged in to the summarizer account's folder.
 

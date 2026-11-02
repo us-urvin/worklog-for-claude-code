@@ -25,8 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, services, updates, viz, watcher
-from .collector import collect, sanitize_remote
+from . import __version__, chats, checks, forget, services, syncstatus, updates, viz, watcher
+from .collector import collect
 from .config import (
     _NAME_RE,
     CONFIG_PATH,
@@ -284,6 +284,11 @@ ol.checks>li>details,ol.checks>li>span{min-width:0}.tips{margin-top:12px}
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
 .notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
+.danger-zone{border-color:color-mix(in srgb,var(--bad) 60%,var(--rule))!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent),var(--shadow)}
+.danger-zone h2{color:var(--bad)}.danger-zone ul{margin:6px 0 12px;padding-left:1.2em}.danger-zone li{margin:4px 0}
+button.danger-solid{background:#C2334B;color:#fff;box-shadow:none}
+#forget,#logins,#checklist,#add,#data-repo{scroll-margin-top:96px}
+#data-repo .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
 .notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
@@ -891,11 +896,61 @@ def top_panels(app: App, cfg: Config, active: str = "") -> str:
                            f'<a class="btn" href="/settings#checklist">Fix it</a></span></div>' for x in broken)
         elif active != "settings":  # Settings shows the full checklist in its own section
             out += checklist_html(app, items)
-    return out + _notices_html(app, cfg)
+    return out + _public_repo_warning(cfg) + _notices_html(app, cfg)
+
+
+def _public_repo_warning(cfg: Config) -> str:
+    """Shown on every page while the data repo is public (from the last check, never waits for the network)."""
+    r = syncstatus.remote(cfg)
+    if not r or syncstatus.cached_visibility(r["host"], r["slug"]) != "public":
+        return ""
+    return (f'<div class="notice hook" role="alert"><span class="ico" aria-hidden="true">⚠️</span><span class="txt">'
+            f'<b>Your data repo {e(r["host"])}/{e(r["slug"])} is public.</b> Anyone can read your prompts and project names. '
+            f'Make it private on GitHub.</span><span class="acts"><a class="btn" href="/settings#data-repo">How</a>'
+            f'</span></div>')
 
 
 MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)"),
                  ("haiku", "Haiku (latest)"), ("fable", "Fable (latest)"))
+
+
+def _forget_link(login: dict) -> str:
+    return (f'<a class="btn quiet forget" href="/settings?forget={e(login["ref"])}#forget" '
+            f'title="Delete Worklog\'s history of this login">Forget…</a>')
+
+
+def _forget_confirm(app: App, cfg: Config, ref_: str) -> str:
+    """The "are you sure?" card: exactly what forgetting this login deletes, and what it doesn't."""
+    p = forget.plan(cfg, ref_)
+    if p is None:
+        return '<div class="banner bad" role="alert">That login is no longer recorded on this device.</div>'
+    days = sorted(p.days)
+    span = (f" from {len(days)} day{'s' * (len(days) != 1)} ({days[0]:%d %b %Y} – {days[-1]:%d %b %Y})"
+            if len(days) > 1 else f" from {days[0]:%d %b %Y}" if days else "")
+    lost = [f"<li><b>{len(p.files)} Claude Code session record{'s' * (len(p.files) != 1)}</b>{span}: what you worked "
+            f"on, prompts, tokens, files and commits</li>"]
+    if p.projects:
+        lost.append("<li>The saved summaries of the projects in those sessions (write them again with "
+                    "“Write summaries” on each day)</li>")
+    if p.account and not p.keep_account:
+        lost.append(f"<li>The account <b>{e(p.account)}</b>. Its other sessions (from logins without a name) move to "
+                    f"the folder&#39;s default account.</li>")
+    elif p.account:
+        lost.append(f"<li>The link between <b>{e(p.account)}</b> and this login (it&#39;s your only account, so it stays)</li>")
+    lost.append("<li>The login itself, from this list</li>")
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    return f"""<section class="block danger-zone" id="forget" role="alertdialog" aria-labelledby="forget-title">
+<h2 id="forget-title">Forget {e(p.label)}?</h2>
+<p><b>This permanently deletes Worklog&#39;s history of this login on this device.</b> You will lose:</p>
+<ul>{"".join(lost)}</ul>
+<p class="muted">Not touched: Claude Code&#39;s own files, your other accounts, and records synced from your other
+computers. The old versions stay in your data repo&#39;s git history. If this account logs in again later, its new
+sessions are tracked as usual.</p>
+<form method="post" action="/accounts/forget">{c}<input type="hidden" name="ref" value="{e(p.ref)}">
+<div class="check"><input type="checkbox" id="forget_ok" name="confirm" value="1" required>
+<label for="forget_ok">I understand this deletes the history above and can&#39;t be undone</label></div>
+<div class="row"><button class="danger-solid">Forget and delete</button><a class="btn quiet" href="/settings#logins">Cancel</a></div>
+</form></section>"""
 
 
 def _detected_section(cfg: Config, csrf_field: str) -> str:
@@ -918,7 +973,8 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             where = f'<span class="muted">folder <code>{e(home_relative(d))}</code> · last seen {e(seen)}</span>'
             if len(by_dir[d]) == 1 and per_dir[d] == 1:  # the only login in its own folder: nothing to tell apart
                 rows.append(f'<div class="acct"><h3>{e(mask_email(login["email"]))}</h3><div class="meta">'
-                            f'<span class="pill ok">Counted as {e(current.name)}</span>{where}</div></div>')
+                            f'<span class="pill ok">Counted as {e(current.name)}</span>{where}</div>'
+                            f'<div class="row" style="margin-top:8px">{_forget_link(login)}</div></div>')
                 continue
             status = (f'<span class="pill ok">Counted as {e(current.name)}</span>' if linked
                       else f'<span class="pill bad">No name yet</span> <span class="muted">counted as {e(current.name)} '
@@ -933,7 +989,8 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
                 f'<label for="{list_id}-in" class="muted" style="margin:0">Account name</label>'
                 f'<input type="text" id="{list_id}-in" name="name" list="{list_id}" value="{e(current.name) if linked else ""}" '
                 f'placeholder="work" required pattern="{NAME_PATTERN}" style="width:auto"><datalist id="{list_id}">{names}</datalist>'
-                f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button></form></div>')
+                f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button>'
+                f'{_forget_link(login)}</form></div>')
     body = "".join(rows) or ('<div class="empty">No logins recorded yet. Install the hook, then start a Claude Code '
                              'session. Each account you log in with appears here.</div>')
     return (f'<h3 id="logins" style="margin-top:22px">Logins seen on this device</h3><p class="help" style="margin-top:6px">Each account '
@@ -943,16 +1000,74 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             f'device.</p>{body}')
 
 
-def page_settings(app: App, cfg: Config) -> str:
+def _ago(ts: float | None) -> str:
+    if not ts:
+        return "never"
+    s = max(0, int(time.time() - ts))
+    for size, unit in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if s >= size:
+            n = s // size
+            return f"{n} {unit}{'s' * (n != 1)} ago"
+    return "just now"
+
+
+def data_repo_section(app: App, cfg: Config) -> str:
+    """Connected or not, to which repo, private or not, and whether uploads work."""
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
-    store = _store(cfg)
-    if store:
-        remotes = [sanitize_remote(u) for u in _git_out(cfg.store_repo, "remote", "get-url", "origin").splitlines()]
-        remote = next((f"{r['host']}/{r['slug']}" for r in remotes if r), "none (local only)")
-        last = _git_out(cfg.store_repo, "log", "-1", "--format=%cr") or "no commits yet"
-        store_state = f'<span class="state-ok">Connected</span>. Remote: {e(remote)}. Last change {e(last)}.'
+    st = syncstatus.status(cfg)
+    folder = e(home_relative(cfg.store_repo))
+    if not st["is_repo"]:
+        body = (f'<div class="meta"><span class="pill bad">Not set up</span><span class="muted"><code>{folder}</code> '
+                f'is not a git folder yet.</span></div><p class="help" style="margin-top:10px">Create it with '
+                f'<code>git init {folder}</code>, or clone your private repo there.</p>')
+        return f'<section class="block" id="data-repo"><h2>Private data repo</h2>{body}</section>'
+    buttons = (f'<div class="row"><form method="post" action="/action/collect">{c}<button>Sync now</button></form>'
+               f'<form method="post" action="/sync/test">{c}<button class="quiet">Test connection</button></form></div>')
+    if not st["remote"]:
+        body = (f'<div class="meta"><span class="pill">Local only</span><span class="muted">Not connected. Your log '
+                f'stays in <code>{folder}</code> on this computer and isn&#39;t backed up.</span></div>'
+                f'<p class="help" style="margin-top:10px">Using Claude Code on more than one computer, or want a backup? '
+                f'Create an <b>empty, private</b> repo on GitHub, GitLab or Bitbucket and connect this folder to it:</p>'
+                f'<div class="cmdrow"><pre class="cmd">git -C {folder} remote add origin git@github.com:YOU/claude-worklog-data.git</pre>'
+                f'<button type="button" class="quiet copy" data-copy="git -C {folder} remote add origin '
+                f'git@github.com:YOU/claude-worklog-data.git">Copy</button></div>'
+                f'<p class="help"><a href="https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup" '
+                f'target="_blank" rel="noopener noreferrer">Step-by-step guide ↗</a> (including a key so the background '
+                f'service can upload without a password)</p>')
+        return f'<section class="block" id="data-repo"><h2>Private data repo</h2>{body}</section>'
+    vis = syncstatus.cached_visibility(st.get("host"), st.get("slug"))
+    if vis is None:  # ask GitHub in the background; the page never waits for it
+        threading.Thread(target=syncstatus.visibility, args=(st["host"], st["slug"]), daemon=True).start()
+    privacy = {"private": '<span class="pill ok">🔒 Private</span>',
+               "public": '<span class="pill bad">⚠️ PUBLIC: anyone can read your log</span>',
+               "unknown": '<span class="pill">Privacy not checked (only possible for GitHub)</span>',
+               None: '<span class="pill">Checking privacy…</span>'}[vis]
+    push, pull = st["push"], st["pull"]
+    if push and not push["ok"]:
+        health = (f'<span class="pill bad">Last upload failed</span><span class="muted">{_ago(push["at"])}: '
+                  f'{e(push["error"][:160])}</span>')
+    elif pull and not pull["ok"]:
+        health = (f'<span class="pill bad">Last download failed</span><span class="muted">{_ago(pull["at"])}: '
+                  f'{e(pull["error"][:160])}</span>')
+    elif push:
+        health = f'<span class="pill ok">Synced</span><span class="muted">last upload {_ago(push["at"])}</span>'
     else:
-        store_state = '<span class="state-bad">Not a git clone.</span> Clone your private data repo into this folder.'
+        health = '<span class="pill">Not uploaded yet</span><span class="muted">the next sync uploads your log</span>'
+    waiting = (f'<span class="muted">· {st["waiting"]} change{"s" * (st["waiting"] != 1)} waiting to upload</span>'
+               if st["waiting"] else "")
+    warn = ('<p class="state-bad" style="margin:10px 0 0"><b>This repo is public.</b> Your prompts, project names and '
+            'commit messages can be read by anyone. Make it private in the repo&#39;s settings on GitHub '
+            '(Settings → General → Danger Zone → Change visibility).</p>' if vis == "public" else "")
+    return f"""<section class="block" id="data-repo"><h2>Private data repo</h2>
+<div class="meta"><span class="pill ok">Connected</span><span>to <a href="{e(st["web_url"])}" target="_blank"
+rel="noopener noreferrer"><b>{e(st["remote"])}</b> ↗</a></span>{privacy}</div>
+<div class="meta" style="margin-top:8px">{health}{waiting}</div>{warn}
+<p class="muted" style="font-size:.85rem;margin:10px 0 0">Folder <code>{folder}</code> · branch <code>{e(st["branch"])}</code>
+· last change {e(st["last_change"] or "none yet")}</p>{buttons}</section>"""
+
+
+def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
 
     logins = detected_logins()
     by_dir = cfg.accounts_by_dir()
@@ -1001,7 +1116,8 @@ def page_settings(app: App, cfg: Config) -> str:
     running = app.watcher is not None and app.watcher.running
     watch_state = ('<span class="state-ok">Watching now.</span>' if running else
                    '<span class="muted">Not watching in this window (it runs in the background service).</span>')
-    return f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
+    confirm = _forget_confirm(app, cfg, forget_ref) if forget_ref else ""
+    return confirm + f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
 <section class="block" style="margin-top:24px"><h2>Claude accounts</h2>
 <p class="help">Worklog counts every Claude Code session under one of these accounts. Pick the setup that matches how you use Claude Code:</p>
 <div class="setups"><div><b>Each account in its own folder</b>You start one account with plain <code>claude</code> and another with
@@ -1017,6 +1133,8 @@ def page_settings(app: App, cfg: Config) -> str:
 <div class="row"><button>Add account</button></div></form></section>
 
 {"" if services.demo_mode() else checklist_html(app, checks.cached(cfg, running), "Setup checklist")}
+
+{data_repo_section(app, cfg)}
 
 <section class="block"><h2>Account switching and extras</h2>
 <p class="help">While Worklog runs, it notices when you switch Claude accounts (with <code>/login</code> or any one-click
@@ -1047,7 +1165,8 @@ account tool) and when a new Claude folder appears, so sessions are counted unde
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{e(cfg.device)}" required pattern="{NAME_PATTERN}">
 <p class="muted" style="font-size:.85rem">Renaming files new sessions under the new name. Earlier days keep the old one.</p>
 <label for="store">Data repo folder</label><input type="text" id="store" name="store" value="{e(home_relative(cfg.store_repo))}" required>
-<p style="font-size:.9rem">{store_state}</p><div class="row"><button>Save changes</button></div></form></section>
+<p class="muted" style="font-size:.85rem">Connection and sync status: see <a href="#data-repo">Private data repo</a>.</p>
+<div class="row"><button>Save changes</button></div></form></section>
 
 <section class="block"><h2>Background services</h2><p class="help">These keep running after you close the browser and start again when you log in.</p>
 <div class="tablewrap"><table><tr><th>Service</th><th>State</th></tr>{svc_rows}</table></div>
@@ -1112,6 +1231,16 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/sync/test":
+            def job():
+                ok, msg = syncstatus.test_connection(cfg)
+                if not ok:
+                    raise RuntimeError(msg)
+                return msg
+            started = self.jobs.start("Testing the connection", job)
+            return ("/settings?ok=job#data-repo" if started else "/settings#data-repo"), None, form
+        if path == "/accounts/forget":
+            return self._forget(cfg, form)
         if path == "/accounts/add-folder":
             return self._account_add_folder(cfg, form)
         if path == "/notices/dismiss":
@@ -1264,6 +1393,22 @@ class App:
 
     def restart(self) -> None:
         updates.restart_server(self.port, self.close)
+
+    def _forget(self, cfg: Config, form: dict):
+        """Delete a login's history after the user ticked "I understand" on the confirmation card."""
+        ref_ = form.get("ref", "")
+        if form.get("confirm") != "1":
+            return None, "Tick “I understand” to confirm.", form
+        p = forget.plan(cfg, ref_)
+        if p is None:
+            return None, "That login is no longer recorded on this device.", form
+
+        def job():
+            msg = forget.apply(cfg, p)
+            checks.forget_cache()
+            return msg
+        started = self.jobs.start("Forgetting a login", job)
+        return ("/settings?ok=job#logins" if started else "/settings"), None, form
 
     def _account_add_folder(self, cfg: Config, form: dict):
         """Add a folder the watcher found: pick a free name from the folder, then install its hook."""
@@ -1425,7 +1570,8 @@ def make_handler(app: App):
                     body, err = page_day(app, cfg, day)
                     return self._page(f"{day:%d %b %Y}", body, "day", q.get("ok"), err)
                 if url.path == "/settings":
-                    return self._page("Settings", page_settings(app, cfg), "settings", q.get("ok"))
+                    forget_ref = q.get("forget") if re.fullmatch(r"[0-9a-f]{12}", q.get("forget", "")) else None
+                    return self._page("Settings", page_settings(app, cfg, forget_ref), "settings", q.get("ok"))
                 if url.path == "/sources":
                     return self._page("Sources", page_sources(app, cfg), "sources", q.get("ok"))
                 return self._send(404, "Not found", "text/plain")

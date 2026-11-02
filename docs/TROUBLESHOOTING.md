@@ -75,7 +75,8 @@ There are two different places a model shows up:
 1. Open **Settings** and check that every account says **Hook installed**. Sessions without a hook record go to the folder's default account.
 2. Under **Logins seen on this device**, give every login marked **No name yet** a name. Its sessions from the last 30 days move right away.
 3. Switching accounts *inside* a running session isn't tracked: a session stays with the account it started with. Start a new session after `/login`.
-4. Using a one-click account-switching app? Keep Worklog running (it starts at login after `install-service`): its watcher notices every switch, even without the hook. Sessions from times it wasn't running go to the folder's default account.
+4. A login you don't recognize, or don't want tracked? Click **Forget…** next to it under **Logins seen on this device**. It shows what will be deleted and asks you to confirm first.
+5. Using a one-click account-switching app? Keep Worklog running (it starts at login after `install-service`): its watcher notices every switch, even without the hook. Sessions from times it wasn't running go to the folder's default account.
 
 ## My other computer doesn't show up
 
