@@ -11,7 +11,7 @@ from collections import Counter
 TAGS = ("Feature", "Bug fix", "Review", "Refactor", "Docs", "Tests", "Research", "Planning", "Release", "Chat")
 
 _REVIEW = re.compile(r"(^/(code-)?review\b|\breview(ing)?\s+(the\s+)?(pr|pull request|this pr|changes|diff)\b"
-                     r"|\bpr\s*#?\d+\b.*\breview|\bcode review\b)", re.I)
+                     r"|\bpr\s*#?\d+\b.*\breview|\bcode[- ]review\b)", re.I)
 _FIX = re.compile(r"\b(fix|fixes|fixed|bug|error|errors|failing|fails|failed|crash|broken|exception|traceback|"
                   r"not working|doesn'?t work|regression)\b", re.I)
 _REFACTOR = re.compile(r"\b(refactor|clean ?up|simplif(y|ied)|rename|restructure|tidy)\b", re.I)

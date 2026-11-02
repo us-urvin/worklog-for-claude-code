@@ -284,6 +284,45 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_timesheet(args) -> int:
+    """Hours per day and project with a one-line summary: print it, or save CSV / Excel."""
+    from . import timesheet as ts
+    from .store import GitStore
+
+    cfg = load_config()
+    today = date.today()
+    start, end = ts.week_bounds(today)
+    if args.week:
+        start, end = ts.week_bounds(today, -1 if args.week == "last" else 0)
+    elif args.month:
+        start, end = ts.month_bounds(today, -1 if args.month == "last" else 0)
+    start, end = args.start or start, args.end or end
+    store = GitStore(cfg.store_repo)
+    with store.lock():
+        store.pull()
+    try:
+        rows = ts.build(store, start, end, time_mode=cfg.time_mode, account=args.account, project=args.project)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    fmt, rnd = args.format, args.round
+    if fmt in ("csv", "xlsx"):
+        data = ts.to_csv(rows, rnd, args.details) if fmt == "csv" else ts.to_xlsx(rows, rnd, args.details)
+        out = args.output or Path(f"worklog-timesheet-{start.isoformat()}-to-{end.isoformat()}.{fmt}")
+        if str(out) == "-":
+            sys.stdout.buffer.write(data)
+            return 0
+        out.write_bytes(data)
+        print(f"{len(rows)} row(s) saved to {out}")
+    else:
+        print(ts.to_markdown(rows, rnd, args.details) if fmt == "md" else ts.to_tsv(rows, rnd, args.details), end="")
+    missing = ts.missing_days(rows)
+    if missing:
+        print(f"note: {len(missing)} day(s) have no written summary yet "
+              f"(run `claude-worklog report --date {missing[0].isoformat()}`)", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="claude-worklog", description=__doc__)
     ap.add_argument("--version", action="version", version=__version__)
@@ -315,6 +354,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--stdout", action="store_true", help="print instead of writing to the store")
     p.add_argument("--auto", action="store_true", help="before 06:00 report yesterday, else today (for the timer)")
     p.set_defaults(func=cmd_report)
+    p = sub.add_parser("timesheet", help="hours per day and project with a one-line summary (CSV, Excel, Markdown)")
+    p.add_argument("--from", dest="start", type=_parse_day, help="first day (default: this week's Monday)")
+    p.add_argument("--to", dest="end", type=_parse_day, help="last day (default: this week's Sunday)")
+    p.add_argument("--week", choices=("this", "last"), help="this or last week")
+    p.add_argument("--month", choices=("this", "last"), help="this or last month")
+    p.add_argument("--format", choices=("md", "tsv", "csv", "xlsx"), default="md")
+    p.add_argument("--output", "-o", type=Path, help="file for csv/xlsx ('-' for stdout)")
+    p.add_argument("--account", help="only this account")
+    p.add_argument("--project", help="only this project key (as shown in the web UI's address)")
+    p.add_argument("--round", type=int, choices=(0, 15, 30), default=0, help="round each row to N minutes")
+    p.add_argument("--details", action="store_true", help="add accounts, devices, sessions and tokens")
+    p.set_defaults(func=cmd_timesheet)
     p = sub.add_parser("serve", help="run the web UI on loopback")
     p.add_argument("--port", type=int, default=8765)
     p.set_defaults(func=cmd_serve)

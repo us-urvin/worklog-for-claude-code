@@ -320,3 +320,110 @@ def test_summary_falls_back_and_never_trusts_odd_values():
     assert s["tag"] == "" and s["line"] == "Fixed the login" and s["bullets"] == ["- Fixed the login. Then tidied up."]
     assert parse_summary("sorry, I can't") is None and parse_summary("{broken json") is None
     assert "sk-ant" not in parse_summary('{"line": "used key sk-ant-api03-abcdefghijklmnopqrstu"}')["line"]
+
+
+# ------------------------------------------------------------------ timesheet
+import csv as _csv  # noqa: E402
+import io as _io  # noqa: E402
+import zipfile as _zip  # noqa: E402
+from datetime import date as _date  # noqa: E402
+from xml.etree import ElementTree as _ET  # noqa: E402
+
+from worklog import timesheet as ts  # noqa: E402
+
+
+def _put(store, day, device, account, rec):
+    store.write_json(f"records/{day}/{device}/{account}/{rec['session_id']}.json", dict(rec, account=account))
+
+
+def _sheet_store(repo):
+    store = GitStore(repo)
+    d1, d2 = "2026-11-02", "2026-11-03"
+    _put(store, d1, "Office", "work", _rec("a", "09:00", "10:00", project=XOO, active=50,
+                                         prompts=["implement qty field"], files=["app/qty.py"]))
+    _put(store, d1, "Office", "work", _rec("b", "11:00", "11:40", project=MISC, active=40,
+                                         prompts=["=HYPERLINK(\"x\") /code-review 505"]))
+    _put(store, d2, "Home", "personal", _rec("c", "09:00", "09:20", project=XOO, active=20, prompts=["fix qty bug"],
+                                             files=["app/qty.py"]))
+    store.write_json(f"reports/{d1}/Office.json", {"generated_at": "2026-11-02T23:30:00", "summaries": {
+        "github.com/xoikospos/xoo": {"source": "ai", "line": "Added the item quantity field", "tag": "Feature",
+                                     "bullets": ["- Added the field"]}}})
+    return store
+
+
+def test_timesheet_rows_use_summaries_edits_and_filters(repo):
+    store = _sheet_store(repo)
+    rows = ts.build(store, _date(2026, 11, 2), _date(2026, 11, 3))
+    assert [(r.day.isoformat(), r.project, r.minutes) for r in rows] == [
+        ("2026-11-02", "xoo", 50), ("2026-11-02", "R&D / misc", 40), ("2026-11-03", "xoo", 20)]
+    assert rows[0].summary == "Added the item quantity field" and rows[0].summarized and rows[0].tag == "Feature"
+    assert not rows[1].summarized and rows[1].tag == "Review"
+    assert ts.missing_days(rows) == [_date(2026, 11, 2), _date(2026, 11, 3)]
+    overrides.change(store, "Office", {"lines": {"2026-11-02|misc:R&D / misc": "Code review of PR #505"},
+                                       "rules": {"~/development": "github.com/xoikospos/xoo"}})
+    rows = ts.build(store, _date(2026, 11, 2), _date(2026, 11, 2))
+    assert [(r.project, r.minutes) for r in rows] == [("xoo", 90)]  # the rule moved the review into xoo
+    assert [r.project for r in ts.build(store, _date(2026, 11, 2), _date(2026, 11, 3), account="personal")] == ["xoo"]
+    assert ts.totals(ts.build(store, _date(2026, 11, 2), _date(2026, 11, 3))) == [("xoo", 1.83)]
+
+
+def test_rounding_never_hides_work():
+    r = ts.Row(_date(2026, 11, 2), "xoo", "k", 7, "", "", False)
+    assert r.hours() == 0.12 and r.hours(15) == 0.25 and r.hours(30) == 0.5
+    assert ts.Row(_date(2026, 11, 2), "xoo", "k", 52, "", "", False).hours(15) == 0.75
+    assert ts.Row(_date(2026, 11, 2), "xoo", "k", 0, "", "", False).hours(15) == 0
+
+
+def test_long_ranges_are_refused(repo):
+    import pytest
+    with pytest.raises(ValueError):
+        ts.build(GitStore(repo), _date(2026, 1, 1), _date(2026, 12, 31))
+
+
+def test_week_and_month_bounds():
+    assert ts.week_bounds(_date(2026, 11, 4)) == (_date(2026, 11, 2), _date(2026, 11, 8))
+    assert ts.week_bounds(_date(2026, 11, 4), -1) == (_date(2026, 10, 26), _date(2026, 11, 1))
+    assert ts.month_bounds(_date(2026, 1, 15), -1) == (_date(2025, 12, 1), _date(2025, 12, 31))
+    assert ts.month_bounds(_date(2026, 12, 15)) == (_date(2026, 12, 1), _date(2026, 12, 31))
+
+
+def test_exports_are_safe_and_readable(repo):
+    rows = ts.build(_sheet_store(repo), _date(2026, 11, 2), _date(2026, 11, 3))
+    data = ts.to_csv(rows, 15, extra=True)
+    assert data.startswith("﻿".encode())
+    table = list(_csv.reader(_io.StringIO(data.decode("utf-8-sig"))))
+    assert table[0] == list(ts.COLUMNS + ts.EXTRA) and table[1][2] == "0.75"
+    assert table[2][4].startswith("'=HYPERLINK")  # a spreadsheet must not run it as a formula
+    md = ts.to_markdown(rows)
+    assert md.splitlines()[0] == "| Date | Project | Hours | Tag | Summary |" and "**Total**" in md
+    tsv = ts.to_tsv(rows)
+    assert tsv.splitlines()[1].split("\t")[:3] == ["2026-11-02", "xoo", "0.83"]
+    x = ts.to_xlsx(rows, extra=True)
+    with _zip.ZipFile(_io.BytesIO(x)) as z:
+        assert set(z.namelist()) >= {"[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml"}
+        sheet = _ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+        _ET.fromstring(z.read("xl/styles.xml"))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    cells = sheet.findall(".//m:row[@r='2']/m:c", ns)
+    assert cells[0].find("m:v", ns).text == str((_date(2026, 11, 2) - _date(1899, 12, 30)).days)  # a real date
+    assert cells[2].find("m:v", ns).text == "0.83"  # hours as a number
+    assert sheet.find(".//m:f", ns).text == "SUM(C2:C4)"
+    assert ts.to_markdown([]).count("\n") == 2  # empty range: just the header
+
+
+def test_timesheet_cli(repo, home, monkeypatch, capsys, tmp_path):
+    from test_accounts import make_cfg
+
+    from worklog import cli
+    _sheet_store(repo)
+    cfg = make_cfg(home, repo)
+    monkeypatch.setattr(cli, "load_config", lambda: cfg)
+    assert cli.main(["timesheet", "--from", "2026-11-02", "--to", "2026-11-03", "--round", "15"]) == 0
+    out = capsys.readouterr()
+    assert "| 2026-11-02 | xoo | 0.75 | Feature | Added the item quantity field |" in out.out
+    assert "no written summary" in out.err
+    dest = tmp_path / "week.xlsx"
+    args = ["timesheet", "--from", "2026-11-02", "--to", "2026-11-03", "--format", "xlsx", "-o", str(dest)]
+    assert cli.main(args) == 0
+    assert _zip.is_zipfile(dest)
+    assert cli.main(["timesheet", "--from", "2026-01-01", "--to", "2026-12-31"]) == 2
