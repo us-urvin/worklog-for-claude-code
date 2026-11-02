@@ -6,6 +6,21 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
+### Fixed
+- **Update now** no longer says "already the newest version" right after a release. It skips pip's saved
+  version list (`--no-cache-dir`), and if PyPI is still publishing the new version it says to try again in a few minutes.
+- The "new version is out" notice waits until a release is about 15 minutes old, so **Update now** can really get it.
+  A release that is still settling is checked again after an hour instead of the next day.
+- The update command shown on the page and in the docs is now `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`.
+
+### Changed
+- Finished-job messages (like "Updated 178 session record(s)") close by themselves after 2 minutes (errors after 15),
+  and each one has a ✕ to close it right away.
+- Upgraded from a terminal while Worklog was running? The page says the new version is installed and offers
+  **Restart now**, instead of quietly running the old version until the next login.
+
 ## [0.3.1] - 2026-11-02
 
 ### Added
@@ -93,7 +108,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.1.0...v0.2.0

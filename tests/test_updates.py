@@ -48,8 +48,10 @@ def test_offline_or_odd_answers_are_ignored(ustate, monkeypatch):
 
 def test_upgrade_command_matches_how_it_was_installed(monkeypatch):
     monkeypatch.setattr(updates.shutil, "which", lambda n: "/usr/bin/pipx")
-    assert updates.upgrade_command("pipx") == ["/usr/bin/pipx", "upgrade", "worklog-for-claude-code"]
-    assert updates.upgrade_command("venv")[-3:] == ["install", "--upgrade", "worklog-for-claude-code"]
+    assert updates.upgrade_command("pipx") == ["/usr/bin/pipx", "upgrade", "--pip-args=--no-cache-dir",
+                                               "worklog-for-claude-code"]
+    assert updates.upgrade_command("venv")[-4:] == ["install", "--upgrade", "--no-cache-dir", "worklog-for-claude-code"]
+    assert "--no-cache-dir" in updates.manual_command("pipx")  # a stale pip cache can't hide the new version
     assert updates.upgrade_command("dev") is None and updates.upgrade_command("system") is None
     assert updates.manual_command("system").startswith("python3 -m pip install --user --upgrade")
 
@@ -95,6 +97,39 @@ def test_update_now_upgrades_then_restarts(ustate, repo, monkeypatch):
             break
         time.sleep(0.02)
     assert app.jobs.snapshot()["message"] == "Updated to 9.9.9. Restarting…" and restarted == [True]
+
+
+def _pypi(version, uploaded):
+    files = [{"upload_time_iso_8601": uploaded}] if uploaded else []
+    body = json.dumps({"info": {"version": version}, "releases": {version: files}, "urls": files}).encode()
+    return lambda req, timeout: io.BytesIO(body)
+
+
+def test_a_release_is_announced_only_once_pypi_has_settled(ustate, monkeypatch):
+    from datetime import datetime, timezone
+    t0 = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc).timestamp()
+    monkeypatch.setattr(updates, "urlopen", _pypi("9.9.9", "2026-11-02T12:00:00.000000Z"))
+    assert updates.check(force=True, now=t0 + 60) is None  # just published: pip may not see it yet
+    assert updates.check(now=t0 + 600) is None  # not re-checked every request...
+    assert updates.check(now=t0 + 60 + updates.RETRY) == "9.9.9"  # ...but an hour later, not a day
+    monkeypatch.setattr(updates, "urlopen", _pypi("10.0.0", None))
+    assert updates.fetch_latest() is None  # listed but no files uploaded yet
+
+
+def test_update_now_explains_when_pypi_is_still_catching_up(ustate, repo, monkeypatch):
+    make_cfg(ustate, repo)
+    _state(ustate, "9.9.9")
+    monkeypatch.setattr(updates, "install_kind", lambda: "pipx")
+    monkeypatch.setattr(updates, "upgrade", lambda: (True, "Updated."))
+    monkeypatch.setattr(updates, "installed_version", lambda: __version__)  # pip found nothing newer
+    app = web.App(1)
+    app._update({})
+    for _ in range(100):
+        if not app.jobs.snapshot()["running"]:
+            break
+        time.sleep(0.02)
+    snap = app.jobs.snapshot()
+    assert "still publishing Worklog 9.9.9" in snap["message"] and "Try again in a few minutes" in snap["message"]
 
 
 def test_failed_update_says_what_to_do(ustate, repo, monkeypatch):

@@ -170,7 +170,7 @@ The day page shows your tokens, sessions, projects and time, a 14-day chart, **W
 
 ## Updating
 
-When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade worklog-for-claude-code` always works. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
+When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
 
 ## Command line
 

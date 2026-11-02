@@ -1424,6 +1424,10 @@ class App:
                 raise RuntimeError(msg)
             new = updates.installed_version()
             if new == __version__:
+                latest = updates.available()
+                if latest:  # PyPI said there is a newer one, but pip couldn't get it yet
+                    raise RuntimeError(f"PyPI is still publishing Worklog {latest}, so pip found nothing newer "
+                                       f"than {__version__}. Try again in a few minutes.")
                 return f"Worklog {__version__} is already the newest version."
             updates.note_updated(new)  # the new version says "Worklog is now …" once
             threading.Timer(1.5, self.restart).start()  # let this message reach the page first
