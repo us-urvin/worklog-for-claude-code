@@ -113,16 +113,15 @@ def summarize(store, day: date, ov, time_mode: str = "active") -> dict:
             claude += int(r.get("claude_minutes") or 0)
             last = max(last, str(r.get("end") or ""))
         out_projects.append({
-            "key": key, "name": p.name, "kind": p.kind, "remote": p.remote, "minutes": p.minutes,
+            "key": key, "name": p.name, "kind": p.kind, "minutes": p.minutes,
             "tokens": sum(p.tokens.values()), "sessions": p.sessions + p.chats, "approx": p.approx,
             "accounts": sorted(p.accounts), "devices": sorted(p.devices), "tag": tag,
             "line": summary_line(s, p, mine), "summarized": bool(mine or s.get("source") == "ai"),
             "refs": refs[:20], "tests": dict(tests), "claude": claude, "branches": sorted(p.branches)[:5],
             "open": [t["text"] for t in p.tasks if t["status"] == "open"][:8],
             "done": sum(1 for t in p.tasks if t["status"] == "done"),
-            "first_prompt": p.prompts[0][1].splitlines()[0][:160] if p.prompts else "",
             "last_prompt": p.prompts[-1][1].splitlines()[0][:160] if p.prompts else "",
-            "last": last,
+            "last": _hhmm(last) if last else "",
         })
     out_projects.sort(key=lambda x: -x["minutes"])
     starts = [str(r.get("start") or "") for r in records if r.get("start")]
