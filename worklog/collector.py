@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+from collections import Counter
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -30,6 +31,56 @@ def find_git_root(start: Path) -> Path | None:
         if (p / ".git").exists():
             return p
     return None
+
+
+def _repo_for(path: str | Path, cache: dict) -> Path | None:
+    """The git repo a path is in (a worktree counts), or None. The home folder itself never counts:
+    a dotfiles repo there would claim every session."""
+    key = str(path)
+    if key not in cache:
+        p = Path(path)
+        root = find_git_root(p) if p.exists() else None
+        cache[key] = root if root is not None and root != Path.home() else None
+    return cache[key]
+
+
+def detect_project(sd: SessionDay) -> tuple[Path | None, str, dict | None, str | None]:
+    """Which repo a session worked in: (root, how, guess, slug).
+
+    In order of trust: the folder it started in; another folder it ran in; the repo holding most of
+    the files it edited; the repo its commands worked in (cd X, git -C X, files it read); a repo named
+    on the command line (gh -R owner/repo, returned as `slug`). When two repos are about equally likely,
+    nothing is picked and `guess` names the likelier one for the page to ask about.
+    """
+    cache: dict = {}
+    for i, (cwd, _) in enumerate(sd.cwd_counts.most_common()):
+        root = _repo_for(cwd, cache)
+        if root:
+            return root, "cwd" if i == 0 else "cwd-other", None, None
+    edited = Counter(r for r in (_repo_for(Path(f).parent, cache) for f in sd.files) if r)
+    if edited:
+        root, n = edited.most_common(1)[0]
+        if n / max(1, len(sd.files)) >= 0.6:
+            return root, "files", None, None
+    worked = Counter()
+    for d, weight in sd.work_dirs.items():
+        root = _repo_for(d, cache)
+        if root:
+            worked[root] += weight
+    worked.update({r: 2 * n for r, n in edited.items()})
+    ranked = worked.most_common(2)
+    if ranked:
+        if len(ranked) == 1 or ranked[0][1] >= 2 * ranked[1][1]:
+            return ranked[0][0], "commands", None, None
+        top = ranked[0][0]
+        remote = sanitize_remote(_git(top, "remote", "get-url", "origin") or "")
+        return None, "", {"path": _home_relative(top), "name": top.name, "remote": remote,
+                          "why": f"it worked in {top.name} and {ranked[1][0].name}"}, None
+    if sd.repo_slugs:
+        slugs = sd.repo_slugs.most_common(2)
+        if len(slugs) == 1 or slugs[0][1] >= 2 * slugs[1][1]:
+            return None, "commands", None, slugs[0][0]
+    return None, "", None, None
 
 
 def sanitize_remote(url: str) -> dict | None:
@@ -87,14 +138,21 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
     if sd.api_calls == 0 and not sd.prompts:
         return None
 
-    root = find_git_root(cwd_path) if cwd_path and cwd_path.exists() else None
+    root, how, guess, slug = detect_project(sd)
     project: dict = {"branches": sorted(sd.branches)}
     if root:
         remote = sanitize_remote(_git(root, "remote", "get-url", "origin") or "")
         project.update(kind="git", name=root.name, path=_home_relative(root), remote=remote)
+    elif slug:  # only named on the command line (gh -R owner/repo): gh talks to GitHub
+        project.update(kind="git", name=slug.split("/")[-1], path=None, remote={"host": "github.com", "slug": slug})
     else:
         project.update(kind="misc", name=cfg.misc_label, path=_home_relative(cwd) if cwd else None,
                        folder=cwd_path.name if cwd_path else None, remote=None)
+        if guess:
+            project["guess"] = guess
+    if how and how != "cwd":
+        project["detected_by"] = how
+        project["started_in"] = _home_relative(cwd) if cwd else None  # for "always put ~/x in …" rules
 
     files = []
     for f in sorted(sd.files)[:200]:
@@ -103,6 +161,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
 
     prompts = [redact(p)[: cfg.max_prompt_chars] for p in sd.prompts[: cfg.max_prompts]]
     minutes = round((sd.last - sd.first).total_seconds() / 60) if sd.first and sd.last else 0
+    tasks = [{"text": redact(t["text"])[:200], "status": t["status"]} for t in sd.task_list()[:50]]
     return {
         "schema": SCHEMA,
         "session_id": sd.session_id,
@@ -113,6 +172,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "start": sd.first.isoformat(timespec="seconds") if sd.first else None,
         "end": sd.last.isoformat(timespec="seconds") if sd.last else None,
         "span_minutes": minutes,
+        "active_minutes": sd.active_minutes(),
         "api_calls": sd.api_calls,
         "tokens": sd.tokens,
         "tokens_by_model": sd.tokens_by_model,
@@ -121,6 +181,7 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "prompts": prompts,
         "files_touched": files,
         "tool_calls": dict(sd.tool_calls),
+        "tasks": tasks,
         "commits": _commits(root, sd.day) if root and cfg.include_commits else [],
     }
 

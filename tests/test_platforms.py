@@ -201,7 +201,8 @@ def test_data_repo_gets_line_ending_rules(repo):
     s = GitStore(repo)
     s.write_json("records/2026-10-01/dev/personal/a.json", {"a": 1})
     s.commit_and_push("test")
-    assert (repo / ".gitattributes").read_text() == "records/** text eol=lf\nreports/** text eol=lf\n"
+    assert (repo / ".gitattributes").read_text() == ("records/** text eol=lf\nreports/** text eol=lf\n"
+                                                    "overrides/** text eol=lf\n")
     assert b"\r\n" not in (repo / "records/2026-10-01/dev/personal/a.json").read_bytes()
 
 

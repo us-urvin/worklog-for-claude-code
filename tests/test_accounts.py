@@ -324,7 +324,7 @@ def test_summary_uses_the_configured_model(home, repo, monkeypatch):
     p = report.ProjectDay("k", "proj", "git", None)
     p.prompts.append(("09:00", "fix the bug"))
 
-    assert report.ai_summary(p, datetime.now().date(), cfg) == ["- did a thing"]
+    assert report.ai_summary(p, datetime.now().date(), cfg)["bullets"] == ["- did a thing"]  # old-style answer
     assert "--model" not in calls[-1]  # default: the account's own default model
 
     cfg.summary_model = "opus"

@@ -14,7 +14,8 @@
 
 ## What it does
 
-- ✅ **Writes down what you worked on**, project by project, every day. Claude writes the summary.
+- ✅ **Writes down what you worked on**, project by project, every day, in plain words. Claude writes the summary.
+- 🧾 **Makes your timesheet**: hours per project with a plain-language line, to Excel or CSV in one click.
 - 📊 **Shows how many tokens you used**, per day, account and model.
 - 👥 **Handles several Claude accounts and computers**, even if you switch accounts with a one-click app.
 - 🔒 **Stays private**: everything lives on your computer (and your own private git repo, if you want).
@@ -52,6 +53,9 @@ A checklist then shows anything still missing, with the exact command for your c
 ## A closer look
 
 <table><tr>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br>A timesheet, ready for Excel.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag and Claude's task list"><br>Plain-language summaries, tags and Claude's tasks.</td>
+</tr><tr>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/insights.png" alt="When you worked, the last 5 weeks and today's projects"><br>When you worked, your streak, and where the time went.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/checklist.png" alt="Setup checklist"><br>A setup checklist with steps for your system.</td>
 </tr><tr>
@@ -77,6 +81,8 @@ A checklist then shows anything still missing, with the exact command for your c
 **Using several GitHub accounts?** GitHub knows you by your SSH key. In Settings → Private data repo, click **Test connection** to see which account signs in, and open *Several GitHub accounts on this computer?* for the steps. [More →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup)
 
 **Uploads to my data repo fail?** Click **Test connection** in Settings: it says what's wrong in plain words. See [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#uploads-fail-or-the-wrong-github-account-is-used).
+
+**Wrong project on a card?** Click **✏️ Edit** to rename it or move the sessions. Worklog can remember the folder you always start in.
 
 **How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`.
 

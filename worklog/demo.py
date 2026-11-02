@@ -36,6 +36,12 @@ PROJECTS = [
                "src/products/Grid.tsx"],
      "commits": ["Add coupon field to checkout", "Fix stale cart badge count", "Test price formatting edge cases",
                  "Responsive product grid"],
+     "line": "Checkout coupon field; fixed the cart badge; price formatter tests", "tag": "Feature",
+     "paragraph": ("Added a coupon field to the checkout form and fixed the cart badge, which did not update after "
+                   "removing an item. Also added tests for how prices are rounded and shown."),
+     "tasks": [("Add coupon field to checkout", "done"),
+               ("Fix cart badge refresh", "done"),
+               ("Make the product grid responsive", "open")],
      "bullets": ["Added a coupon field to checkout with inline validation.",
                  "Fixed the cart badge not refreshing after an item was removed.",
                  "Covered the price formatter with tests for rounding and currencies."]},
@@ -45,6 +51,12 @@ PROJECTS = [
      "files": ["app/refunds/views.py", "app/webhooks/worker.py", "app/settlement/jobs.py",
                "migrations/0042_refund_reason.py", "tests/test_refunds.py"],
      "commits": ["Idempotent refunds", "Batch settlement queries", "Add refund reason column"],
+     "line": "Safe retries for refunds; fixed slow settlement batches", "tag": "Bug fix",
+     "paragraph": ("Made refunds safe to retry, so a repeated request no longer refunds twice. Found why the "
+                   "settlement job was slow on big batches and fixed it."),
+     "tasks": [("Idempotency keys for refunds", "done"),
+               ("Batch settlement queries", "done"),
+               ("Add refund reason migration", "open")],
      "bullets": ["Made the refund endpoint idempotent using request keys.",
                  "Traced settlement timeouts to per-row queries and batched them.",
                  "Added a migration and tests for refund reasons."]},
@@ -53,18 +65,28 @@ PROJECTS = [
                  "write a runbook for rotating the DB password"],
      "files": ["terraform/staging/nodes.tf", "docs/runbooks/rotate-db-password.md"],
      "commits": ["Autoscale staging node pool", "Runbook: DB password rotation"],
+     "line": "Staging autoscaling; database password runbook", "tag": "Release",
+     "paragraph": ("Let the staging servers grow and shrink with load, and wrote step-by-step instructions for "
+                   "changing the database password."),
+     "tasks": [],
      "bullets": ["Added autoscaling to the staging node pool.", "Wrote a runbook for rotating the database password."]},
     {"name": "trail-map", "host": "github.com", "slug": "demo-user/trail-map", "account": "personal", "weight": 3,
      "prompts": ["render GPX tracks on the map with elevation colors", "cache map tiles offline",
                  "add a dark theme toggle"],
      "files": ["src/map/tracks.js", "src/map/tiles.js", "src/ui/theme.css"],
      "commits": ["Color GPX tracks by elevation", "Offline tile cache", "Dark theme"],
+     "line": "Map tracks colored by height; offline map tiles", "tag": "Feature",
+     "paragraph": "Showed hiking tracks on the map, colored by height, and made map tiles work offline.",
+     "tasks": [("Color tracks by elevation", "done"), ("Offline tile cache", "open")],
      "bullets": ["Rendered GPX tracks colored by elevation.", "Added an offline cache for map tiles."]},
     {"name": "R&D / misc", "host": None, "slug": None, "account": "personal", "weight": 2, "folder": "scratch",
      "prompts": ["compare three ways to debounce a search box", "summarize the tradeoffs of SQLite WAL mode",
                  "write a quick script to rename photos by date"],
      "files": ["~/scratch/debounce.js", "~/scratch/rename_photos.py"],
      "commits": [],
+     "line": "Researched search-box debouncing and SQLite WAL mode", "tag": "Research",
+     "paragraph": "Compared ways to keep a search box from firing on every key press, and read up on a SQLite setting.",
+     "tasks": [],
      "bullets": ["Compared debounce approaches for a search box.", "Read up on SQLite WAL mode tradeoffs."]},
 ]
 
@@ -142,21 +164,27 @@ def _record(rng: random.Random, proj: dict, day: date, device: str, n: int, now:
     commits = [{"hash": f"{rng.getrandbits(28):07x}", "subject": s}
                for s in rng.sample(proj["commits"], k=min(len(proj["commits"]), rng.randint(0, 2)))]
     branches = ["main"] if not proj["slug"] else sorted({"main", rng.choice(["main", "feature/demo", "fix/demo"])})
+    tasks = [{"text": t, "status": st} for t, st in proj.get("tasks", [])[: rng.randint(0, 3)]]
     if proj["slug"]:
         project = {"kind": "git", "name": proj["name"], "path": f"~/code/{proj['name']}", "branches": branches,
                    "remote": {"host": proj["host"], "slug": proj["slug"]}}
     else:
         project = {"kind": "misc", "name": proj["name"], "path": f"~/{proj['folder']}", "folder": proj["folder"],
                    "branches": [], "remote": None}
+        if rng.random() < 0.5:  # like a session started outside its repo: the page asks "Probably …?"
+            project["guess"] = {"path": "~/code/storefront", "name": "storefront",
+                                "remote": {"host": "github.com", "slug": "acme-shop/storefront"},
+                                "why": "it worked in storefront and trail-map"}
     return {
         "schema": 1, "session_id": f"demo-{day:%Y%m%d}-{device}-{n:02d}", "date": day.isoformat(),
         "account": proj["account"], "device": device, "project": project,
         "start": start.isoformat(timespec="seconds"), "end": end.isoformat(timespec="seconds"),
-        "span_minutes": minutes, "api_calls": rng.randint(8, 120), "tokens": tokens,
+        "span_minutes": minutes, "active_minutes": int(minutes * rng.uniform(0.55, 0.9)),
+        "api_calls": rng.randint(8, 120), "tokens": tokens,
         "tokens_by_model": by_model, "subagent_tokens_by_model": sub, "prompt_count": len(prompts), "prompts": prompts,
         "files_touched": files, "tool_calls": {"Read": rng.randint(3, 40), "Edit": rng.randint(1, 20),
                                                "Bash": rng.randint(0, 15)},
-        "commits": commits if proj["slug"] else [],
+        "commits": commits if proj["slug"] else [], "tasks": tasks,
     }
 
 
@@ -243,7 +271,9 @@ def generate(home: Path, days: int = 14, seed: int = 7, now: datetime | None = N
             day_projects.setdefault(project_key(rec["project"]), {"bullets": []})["bullets"].append(chat["bullet"])
         # Past days have finished summaries; today shows raw prompts, as it would before the nightly run.
         if back > 0 and day_projects:
-            summaries = {key: {"bullets": [f"- {b}" for b in p["bullets"]], "source": "ai"}
+            summaries = {key: {"bullets": [f"- {b}" for b in p["bullets"]], "source": "ai",
+                               "line": p.get("line") or (p["bullets"][0] if p["bullets"] else ""),
+                               "paragraph": p.get("paragraph", ""), "tag": p.get("tag", ""), "next": []}
                          for key, p in day_projects.items()}
             generated = datetime(day.year, day.month, day.day, 23, 30).astimezone()
             meta = {"date": day.isoformat(), "device": DEVICES[0], "summaries": summaries,

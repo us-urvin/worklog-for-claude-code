@@ -17,6 +17,8 @@ New to the terminal? Start with the [step-by-step guide](GETTING-STARTED.md). So
 
 - [Full setup (several machines)](#full-setup)
 - [Multiple accounts](#multiple-accounts)
+- [Projects, tags and tasks](#projects-tags-and-tasks)
+- [Timesheet](#timesheet)
 - [Command line](#command-line)
 - [Privacy in detail](#privacy)
 - [Limitations](#limitations)
@@ -170,6 +172,48 @@ The day page shows your tokens, sessions, projects and time, a 14-day chart, **W
 
 **Fun mode** (on by default; Settings → *Fun mode*, or `[ui] fun = false`) adds a streak flame, a daily fun fact, a sleepy robot on empty days, and confetti for a record day (your biggest in 5 weeks), streak milestones and finished summaries, each only once. There's also a hidden party mode. (Hint: try typing `party` on the day page. Esc stops it.)
 
+## Projects, tags and tasks
+
+**Which project a session belongs to.** Usually it's the git repo Claude Code was started in. If you start it somewhere else, for example in `~/development` and then `cd xoo`, Worklog looks further, in this order:
+1. another folder the session ran in;
+2. the repo holding most of the files it edited;
+3. the repos its commands worked in (`cd xoo`, `git -C xoo`) and the files it read;
+4. a repo named with `gh … -R owner/repo`.
+
+When two repos are about equally likely, the card asks **"Probably xoo?"** with **Yes, move** and **No**. Worktrees show under the repo's own name, so `xoo-fix-qty` is counted as **xoo**.
+
+**✏️ Edit** on a card opens a popup where you can:
+- **rename** the project (the new name shows on every day);
+- **move** all or some of its sessions to another project, or to a **new project** you name;
+- tick **Always put sessions started in `~/development` into that project** to make it a rule for this computer, past days included;
+- set the **kind of work**;
+- change the **timesheet line** for that day.
+
+**Undo my changes** puts everything back. Your corrections are saved in the data repo as `overrides/<device>.json` and sync to your other computers. Records themselves are never changed.
+
+**Kind of work (tags).** Each card gets one of: Feature, Bug fix, Review, Refactor, Docs, Tests, Research, Planning, Release or Chat. Worklog guesses it from your prompts and the files changed (a `/code-review` is a Review, only Markdown files is Docs, and so on), and Claude suggests one when it writes the summary. Change it with **Edit**.
+
+**Summaries in plain words.** With AI summaries on, each card gets a short paragraph a manager or client can read. The details are underneath, along with a one-line **timesheet line** and any **suggested next steps**.
+
+**Tasks.** If Claude kept a to-do list during the session, the card shows it: ✅ done and ⬜ still open, with **Copy checklist** (Markdown) and **Copy as text**. A task made on one day and finished the next shows as done on the day it was finished.
+
+**Time.** Cards and timesheets count **active time**: the stretches where messages are at most 15 minutes apart, so a window left open over lunch doesn't count. Two sessions on the same project at the same time count once. Days recorded before 0.4.0 don't have active time; their time is first to last message and is marked with "≈". To count first to last message everywhere, set `[report] time = "wall"`.
+
+## Timesheet
+
+The **Timesheet** page (top menu) lists one row per day and project: **date, project, hours, tag and the timesheet line**.
+- Pick this or last week, this or last month, or custom days (up to 92). Filter by account, and round each row to 15 or 30 minutes (work is never rounded down to zero).
+- **⬇ Excel** and **⬇ CSV** download the table. **Copy as table** pastes into Google Sheets, Excel or Jira as columns. **Copy Markdown** is for docs and chats. Tick *Accounts, devices, sessions, tokens* for more columns.
+- Days without a written summary use your first prompt and say *(not summarized)*. **Write missing summaries** writes them for the days shown.
+
+From the terminal:
+
+```bash
+claude-worklog timesheet --week last                          # Markdown table in the terminal
+claude-worklog timesheet --month this --format xlsx           # saves worklog-timesheet-….xlsx
+claude-worklog timesheet --from 2026-11-01 --to 2026-11-15 --account work --round 15 --format csv -o nov.csv
+```
+
 ## Updating
 
 When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
@@ -184,6 +228,7 @@ claude-worklog doctor                          # check config, data repo, accoun
 claude-worklog report --stdout                 # today's report in the terminal
 claude-worklog report --date 2026-09-25        # write reports/2026-09-25/<device>.md to the data repo
 claude-worklog report --no-ai                  # plain prompt lists, no claude -p
+claude-worklog timesheet --week last [--format md|tsv|csv|xlsx] [--account NAME] [--round 15]
 claude-worklog collect --days 7                # backfill a week from this machine
 claude-worklog import-chats conversations-000.zip [--account NAME] [--since DATE]  # claude.ai export
 claude-worklog install-hook [--account NAME]   # add the Claude Code hooks (backs up settings.json)
@@ -200,6 +245,7 @@ Data repo layout (every path is written by a single device, so there are no merg
 records/<date>/<device>/<account>/<session>.json
 records/<date>/<device>/<account>/chat-<chat id>.json   # imported claude.ai chats
 reports/<date>/<device>.md
+overrides/<device>.json                                 # your renames, moves, rules, tags and timesheet lines
 ```
 
 ## Privacy
@@ -209,13 +255,16 @@ This tool reads your Claude Code transcripts, so it is built to keep as little a
 **What is stored.** One JSON record per session per day, in your data repo:
 - date, start and end time, account **name** and device **name** (the names you choose),
 - project name, git remote as `host/owner/repo` (credentials always removed), branch names, and the project path relative to your home folder,
-- token counts per model, number of API calls and tool calls,
+- token counts per model, number of API calls and tool calls, and active minutes,
+- the items of Claude's own to-do list (redacted, at most 50 of 200 characters),
 - your first 30 prompts in the session, **cut to 300 characters and redacted**,
 - paths of files Claude edited (relative to the repo, or to your home folder outside a repo), and the short hash and redacted subject of **your own** commits that day.
 
 **Imported claude.ai chats.** One record per chat per day: the chat title (redacted, at most 120 characters), your own messages (first 30, **cut to 300 characters and redacted**), the number of messages, tool names, and names of files Claude edited in its sandbox. Only if you turn on `keep_summaries`: claude.ai's own summary of the chat (written by Claude), Markdown removed, redacted and cut to 600 characters; turning it off again removes them from this device's records. The export's account id is turned into a short one-way hash in a local file (`~/.local/state/claude-worklog/chats.json`, mode 600) to remember which worklog account it belongs to, and is never written to the data repo. worklog only opens `conversations.json`; the export's other files, including your login history, are never read.
 
-**What is never stored.** File contents, Claude's replies, tool output, command output, your git e-mail, credentials. From claude.ai exports also: Claude's thinking, chat summaries (unless you turn on `keep_summaries`), attachments and their extracted text. Account ids and login e-mails (used to tell accounts apart) stay in a local file (`~/.local/state/claude-worklog/accounts.json`, mode 600) and are never written to the data repo.
+**Your corrections** (`overrides/<device>.json`): project names you typed, which sessions you moved where, folder rules (home-relative paths), tags and timesheet lines. Nothing else.
+
+**What is never stored.** File contents, Claude's replies, tool output, command output (Worklog reads which folders commands worked in to find the project, but doesn't keep them), your git e-mail, credentials. From claude.ai exports also: Claude's thinking, chat summaries (unless you turn on `keep_summaries`), attachments and their extracted text. Account ids and login e-mails (used to tell accounts apart) stay in a local file (`~/.local/state/claude-worklog/accounts.json`, mode 600) and are never written to the data repo.
 
 **What is redacted.** Before anything is written, prompts and commit subjects are scrubbed of common API keys (Anthropic, OpenAI, GitHub, GitLab, Bitbucket, AWS, Slack, Google), JWTs, bearer tokens, private keys, `password=…`-style pairs, credentials in URLs, e-mail addresses and IPv4 addresses. This is **best effort**, which is why the data repo **must be private**.
 

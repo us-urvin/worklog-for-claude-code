@@ -7,13 +7,17 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from . import overrides
 from .config import DEFAULT_CLAUDE_DIR, SUMMARIZER_CWD, Config
-from .parser import zero_tokens
+from .overrides import Overrides
+from .parser import is_noise, zero_tokens
 from .redact import redact
 from .store import GitStore
+from .tags import tag_session, top_tag
 
 log = logging.getLogger(__name__)
 _MAX_AI_INPUT_CHARS = 24_000  # keep each summary call small and well below arg-size limits
@@ -23,6 +27,38 @@ def project_key(proj: dict) -> str:
     """Same repo on two machines (different paths) merges via its remote slug."""
     remote = proj.get("remote")
     return f"{remote['host']}/{remote['slug']}" if remote else f"{proj.get('kind')}:{proj.get('name')}"
+
+
+def project_title(proj: dict) -> str:
+    """The name on a card: the repo's own name when it has a remote, so a worktree folder
+    ("xoo-fix-qty") still shows as "xoo"; else the folder or label."""
+    remote = proj.get("remote")
+    if isinstance(remote, dict) and remote.get("slug"):
+        return str(remote["slug"]).rsplit("/", 1)[-1]
+    return str(proj.get("name") or "?")
+
+
+def _interval(r: dict) -> tuple[float, float] | None:
+    try:
+        a = datetime.fromisoformat(str(r.get("start"))).timestamp()
+        b = datetime.fromisoformat(str(r.get("end"))).timestamp()
+    except ValueError:
+        return None
+    return (a, b) if b >= a else None
+
+
+def _union_minutes(spans: list[tuple[float, float]]) -> float:
+    total, cur = 0.0, None
+    for a, b in sorted(spans):
+        if cur and a <= cur[1]:
+            cur = (cur[0], max(cur[1], b))
+        else:
+            if cur:
+                total += cur[1] - cur[0]
+            cur = (a, b)
+    if cur:
+        total += cur[1] - cur[0]
+    return total / 60
 
 
 _MODEL_RE = re.compile(r"^claude-(?:(?P<a>opus|sonnet|haiku|fable)-(?P<v1>\d+(?:-\d)?)"
@@ -72,6 +108,18 @@ class ProjectDay:
     chats: int = 0  # claude.ai chat records (no token data)
     titles: list[str] = field(default_factory=list)  # chat titles, in order seen
     chat_items: list[dict] = field(default_factory=list)  # one per chat: start, title, prompts, summary
+    wall_minutes: int = 0  # first to last message, overlapping sessions counted once
+    approx: bool = False  # some records predate active time: minutes are first-to-last
+    tag_weights: Counter = field(default_factory=Counter)  # tag -> minutes
+    tasks: list[dict] = field(default_factory=list)  # Claude's to-do items: text, status
+    sessions_list: list[dict] = field(default_factory=list)  # for "Edit": id, start, first prompt, minutes
+    started_in: set[str] = field(default_factory=set)  # home-relative folders the misc sessions started in
+    guess: dict | None = None  # "Probably xoo?" for sessions that found no repo
+    moved: bool = False  # sessions were moved here or a rule applied
+
+    @property
+    def tag(self) -> str | None:
+        return top_tag(self.tag_weights)
 
 
 def is_chat(r: dict) -> bool:
@@ -99,10 +147,35 @@ def _add(dst: dict[str, int], src: object) -> None:
         dst[k] += v if isinstance(v, int) else 0
 
 
-def aggregate(records: list[dict]):
+def _target(key: str, ov: Overrides, known: dict[str, dict]) -> dict:
+    """What we know about the project a session is moved to."""
+    if key in known:
+        return known[key]
+    if key in ov.projects:
+        return ov.projects[key]
+    if "/" in key and ":" not in key.split("/", 1)[0]:  # host/owner/repo
+        host, slug = key.split("/", 1)
+        return {"kind": "git", "name": slug.rsplit("/", 1)[-1], "remote": {"host": host, "slug": slug}}
+    kind, _, name = key.partition(":")
+    return {"kind": kind or "git", "name": name or key, "remote": None}
+
+
+def aggregate(records: list[dict], ov: Overrides | None = None, time_mode: str = "active"):
+    """Per-account and per-project totals for one day. `ov` applies your corrections (renames, moves,
+    folder rules, tags). `time_mode` "active" counts time with messages at most 15 minutes apart;
+    "wall" counts first to last message."""
+    ov = ov or Overrides()
     accounts: dict[str, dict] = {}
     projects: dict[str, ProjectDay] = {}
-    for r in _dedupe_chats(records):
+    records = _dedupe_chats(records)
+    known = {}
+    for r in records:
+        proj = r.get("project") or {}
+        known.setdefault(project_key(proj), {"kind": proj.get("kind"), "name": proj.get("name"),
+                                             "remote": proj.get("remote")})
+    spans: dict[str, list[tuple[float, float]]] = {}
+    active: dict[str, float] = {}
+    for r in records:
         acct = accounts.setdefault(r.get("account", "?"), {
             "tokens": zero_tokens(), "sessions": 0, "chats": 0, "devices": set(), "models": {}, "models_sub": {}})
         _add(acct["tokens"], r.get("tokens"))
@@ -117,9 +190,19 @@ def aggregate(records: list[dict]):
             _add(acct["models_sub"].setdefault(model, zero_tokens()), t)
 
         proj = r.get("project") or {}
+        sid = str(r.get("session_id") or "")
         key = project_key(proj)
-        p = projects.setdefault(key, ProjectDay(key, str(proj.get("name", "?")), str(proj.get("kind")),
-                                                proj.get("remote")))
+        moved_to = ov.moves.get(sid) if sid else None
+        if moved_to is None and proj.get("kind") == "misc":
+            moved_to = ov.rule_for(str(r.get("device", "")), proj.get("started_in") or proj.get("path"))
+        info = proj
+        if moved_to and moved_to != key:
+            key, info = moved_to, _target(moved_to, ov, known)
+        p = projects.get(key)
+        if p is None:
+            p = projects[key] = ProjectDay(key, ov.names.get(key) or project_title(info), str(info.get("kind")),
+                                           info.get("remote"))
+        p.moved = p.moved or bool(moved_to)
         p.accounts.add(r.get("account", "?"))
         p.devices.add(r.get("device", "?"))
         if is_chat(r):
@@ -131,19 +214,48 @@ def aggregate(records: list[dict]):
                                  "summary": str(r.get("summary") or "")})
         else:
             p.sessions += 1
-        p.minutes += int(r.get("span_minutes") or 0)
+        span = int(r.get("span_minutes") or 0)
+        act = r.get("active_minutes")
+        if not isinstance(act, int) or isinstance(act, bool):
+            act, p.approx = span, p.approx or not is_chat(r)
+        iv = _interval(r)
+        if iv:
+            spans.setdefault(key, []).append(iv)
+        active[key] = active.get(key, 0) + (span if time_mode == "wall" else act)
         _add(p.tokens, r.get("tokens"))
         start = (r.get("start") or "")[11:16]
-        p.prompts.extend((start, q) for q in r.get("prompts") or [])
+        prompts = [q for q in r.get("prompts") or [] if isinstance(q, str) and not is_noise(q)]
+        p.prompts.extend((start, q) for q in prompts)
         p.files.update(r.get("files_touched") or [])
         p.branches.update(proj.get("branches") or [])
         if proj.get("folder"):
             p.folders.add(proj["folder"])
+        if proj.get("kind") == "misc" and (proj.get("started_in") or proj.get("path")):
+            p.started_in.add(str(proj.get("started_in") or proj.get("path")))
+        if proj.get("guess") and not moved_to and not ov.noguess.get(sid) and p.guess is None:
+            p.guess = dict(proj["guess"], sessions=[])
+        if p.guess is not None and proj.get("guess") and not moved_to and not ov.noguess.get(sid):
+            p.guess["sessions"].append(sid)
         for c in r.get("commits") or []:
             p.commits.setdefault(c.get("hash", ""), c.get("subject", ""))
-    for p in projects.values():
+        tag = ov.tags.get(sid) or tag_session(dict(r, prompts=prompts))
+        p.tag_weights[tag] += max(1, act)
+        for t in r.get("tasks") or []:
+            if isinstance(t, dict) and t.get("text") and not any(x["text"] == t["text"] for x in p.tasks):
+                p.tasks.append({"text": str(t["text"]), "status": "done" if t.get("status") == "done" else "open"})
+        if sid:
+            p.sessions_list.append({"id": sid, "start": start, "minutes": act, "account": r.get("account", "?"),
+                                    "first": prompts[0].splitlines()[0][:120] if prompts else "",
+                                    "chat": is_chat(r)})
+    for key, p in projects.items():
+        wall = _union_minutes(spans.get(key, []))
+        p.wall_minutes = round(wall) if spans.get(key) else 0
+        total = active.get(key, 0)
+        # Two sessions at the same time are one stretch of your time, not two.
+        p.minutes = round(min(total, wall)) if spans.get(key) and wall else round(total)
         p.prompts.sort()
         p.chat_items.sort(key=lambda c: c["start"])
+        p.sessions_list.sort(key=lambda x: x["start"])
     return accounts, projects
 
 
@@ -158,28 +270,80 @@ def _claude_env(cfg: Config) -> dict[str, str]:
     return env
 
 
-def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
+_SUMMARY_KEYS = ("line", "paragraph", "bullets", "tag", "next")
+
+
+def parse_summary(text: str) -> dict | None:
+    """Claude's answer -> {"line", "paragraph", "bullets", "tag", "next"}, or None if it is unusable.
+
+    Takes the JSON object even with text around it or in a code fence; falls back to "- " bullets
+    (how summaries were written before 0.4.0). Every string is redacted and length-capped.
+    """
+    from .tags import TAGS
+    out: dict | None = None
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        try:
+            data = json.loads(text[start:end + 1])
+        except ValueError:
+            data = None
+        if isinstance(data, dict):
+            def clean(v, n):
+                return redact(" ".join(str(v).split()))[:n] if isinstance(v, str) and v.strip() else ""
+            def strings(v):
+                return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+            bullets = [clean(b, 400) for b in strings(data.get("bullets"))]
+            out = {"line": clean(data.get("line"), 160), "paragraph": clean(data.get("paragraph"), 900),
+                   "bullets": ["- " + b for b in bullets if b][:8],
+                   "tag": data.get("tag") if data.get("tag") in TAGS else "",
+                   "next": [clean(x, 200) for x in strings(data.get("next")) if x.strip()][:6]}
+            if not (out["line"] or out["paragraph"] or out["bullets"]):
+                out = None
+    if out is None:
+        bullets = [redact(line.strip())[:400] for line in text.splitlines() if line.strip().startswith(("- ", "* "))]
+        if not bullets:
+            return None
+        out = {"line": "", "paragraph": "", "bullets": ["- " + b[2:] for b in bullets], "tag": "", "next": []}
+    if not out["bullets"] and out["paragraph"]:
+        out["bullets"] = ["- " + out["paragraph"]]
+    if not out["line"]:
+        first = (out["paragraph"] or out["bullets"][0][2:]).split(". ")[0].rstrip(".")
+        out["line"] = first[:157] + "…" if len(first) > 158 else first
+    return out
+
+
+def ai_summary(p: ProjectDay, day: date, cfg: Config) -> dict | None:
+    """A plain-language summary of one project's day, written by `claude -p`, or None."""
     exe = shutil.which(cfg.claude_bin)
     if not exe:
         log.warning("claude binary %r not found; using plain summary", cfg.claude_bin)
         return None
     data = {
         "project": p.name, "kind": p.kind, "branches": sorted(p.branches), "folders": sorted(p.folders),
+        "minutes_worked": p.minutes, "likely_kind_of_work": p.tag,
         "chats": [{"title": c["title"], "your_messages": c["prompts"], "chat_summary": c["summary"]}
                   for c in p.chat_items],
         "prompts_in_order": [q for _, q in p.prompts],
+        "claude_todo_list": p.tasks,
         "commits": list(p.commits.values()), "files_edited": sorted(p.files)[:80],
     }
     if p.chat_items:
         data.pop("prompts_in_order")  # already grouped per chat
+    from .tags import TAGS
     blob = json.dumps(data, ensure_ascii=False)[:_MAX_AI_INPUT_CHARS]
     prompt = (
-        f"You are writing a developer's end-of-day work log for {day.isoformat()}. "
-        "The JSON below was extracted from their Claude Code sessions and/or claude.ai chats for ONE project. "
-        "Write 2-7 concise bullet points describing what was accomplished or investigated "
-        "(features implemented, bugs fixed, refactors, research). Past tense, no fluff. "
-        "Use ONLY the data given; if something is unclear, describe it generically rather than guess. "
-        "Output only the bullets, each line starting with '- '. Do not use any tools.\n\n"
+        f"You are writing a developer's work log for {day.isoformat()}. The JSON below was extracted from their "
+        "Claude Code sessions and/or claude.ai chats for ONE project. Describe what they got done or looked into.\n"
+        "Write in plain, simple English that a manager or client understands: short sentences, past tense, "
+        "no jargon or file paths unless they matter, no hype. Use ONLY the data given; if something is unclear, "
+        "describe it in general terms rather than guess. Do not use any tools.\n"
+        "Answer with ONE JSON object and nothing else:\n"
+        '{"line": "one line for a timesheet, at most 120 characters, e.g. \'Reviewed PRs #503 and #505; '
+        'triaged the mobile item-quantity bug\'",\n'
+        ' "paragraph": "2-4 plain sentences about the day\'s work on this project",\n'
+        ' "bullets": ["2-7 short points: what was built, fixed, reviewed or decided"],\n'
+        f' "tag": "one of: {", ".join(TAGS)}",\n'
+        ' "next": ["open items still to do, if the data shows any; else an empty list"]}\n\n'
         f"<data>\n{blob}\n</data>"
     )
     SUMMARIZER_CWD.mkdir(parents=True, exist_ok=True)  # excluded by the collector
@@ -196,9 +360,19 @@ def ai_summary(p: ProjectDay, day: date, cfg: Config) -> list[str] | None:
     if out.returncode != 0:
         log.warning("claude -p exited %d for %s: %s", out.returncode, p.name, out.stderr.strip()[:300])
         return None
-    bullets = [redact(line.strip())[:400] for line in out.stdout.splitlines()
-               if line.strip().startswith(("- ", "* "))]
-    return [("- " + b[2:]) for b in bullets] or None
+    parsed = parse_summary(out.stdout)
+    if parsed is None:
+        log.warning("claude -p gave no usable summary for %s", p.name)
+    return parsed
+
+
+def plain_line(p: ProjectDay) -> str:
+    """A one-line description without AI: the chat titles or the first prompt."""
+    if p.chat_items:
+        text = "; ".join(c["title"] for c in p.chat_items[:3])
+    else:
+        text = p.prompts[0][1].splitlines()[0] if p.prompts else "Work in Claude Code"
+    return text if len(text) <= 120 else text[:119].rsplit(" ", 1)[0] + "…"
 
 
 def chat_line(c: dict) -> str:
@@ -230,8 +404,12 @@ def _dur(minutes: int) -> str:
 def summarize_all(projects: dict[str, ProjectDay], day: date, cfg: Config, use_ai: bool) -> dict[str, dict]:
     out = {}
     for key, p in projects.items():
-        bullets = ai_summary(p, day, cfg) if use_ai else None
-        out[key] = {"bullets": bullets or plain_summary(p), "source": "ai" if bullets else "plain"}
+        smart = ai_summary(p, day, cfg) if use_ai else None
+        if smart:
+            out[key] = dict(smart, source="ai")
+        else:
+            out[key] = {"bullets": plain_summary(p), "source": "plain", "line": plain_line(p), "paragraph": "",
+                        "tag": "", "next": []}
     return out
 
 
@@ -281,12 +459,18 @@ def render(day: date, cfg: Config, accounts: dict, projects: dict[str, ProjectDa
         work = [f"{p.sessions} session(s)"] if p.sessions else []
         work += [f"{p.chats} chat(s)"] if p.chats else []
         tokens = f"{_n(sum(p.tokens.values()))} tokens" if p.sessions else "no token data"
-        out += [f"### {p.name}", "",
+        s = summaries.get(p.key) or {}
+        tag = s.get("tag") or p.tag
+        out += [f"### {p.name}" + (f" · {tag}" if tag else ""), "",
                 f"{where} · accounts: {', '.join(sorted(p.accounts))} · devices: {', '.join(sorted(p.devices))} · "
-                f"{' · '.join(work)} · {_dur(p.minutes)} span · {tokens} · "
+                f"{' · '.join(work)} · {'≈' if p.approx else ''}{_dur(p.minutes)} · {tokens} · "
                 f"{len(p.files)} file(s) edited · {len(p.commits)} commit(s)", ""]
-        out += summaries.get(p.key, {}).get("bullets") or plain_summary(p)
+        if s.get("paragraph"):
+            out += [s["paragraph"], ""]
+        out += s.get("bullets") or plain_summary(p)
         out += [""]
+        if p.tasks:
+            out += ["Tasks:", ""] + [f"- [{'x' if t['status'] == 'done' else ' '}] {t['text']}" for t in p.tasks] + [""]
         if p.chat_items and summaries.get(p.key):  # AI bullets above; still list the chats themselves
             out += ["Chats:", ""] + [f"- {chat_line(c)}" for c in p.chat_items] + [""]
         if p.commits:
@@ -299,7 +483,8 @@ def build_report(cfg: Config, day: date, use_ai: bool, write: bool) -> tuple[str
     with store.lock():  # short lock: sync + read only
         store.pull()
         records = list(store.iter_json(f"records/{day.isoformat()}"))
-    accounts, projects = aggregate(records)
+        ov = overrides.load(store.path)
+    accounts, projects = aggregate(records, ov, cfg.time_mode)
     summaries = summarize_all(projects, day, cfg, use_ai)  # AI calls run without the lock
     text = render(day, cfg, accounts, projects, summaries)
     if not write:
