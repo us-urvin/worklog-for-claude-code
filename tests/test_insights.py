@@ -159,16 +159,58 @@ def test_share_card_shows_totals_only(two_weeks, home, monkeypatch):
     from test_accounts import make_cfg
     store, monday = two_weeks
     cfg = make_cfg(home, store.path)
-    _, start, end, p, streak, names = web._share_period(cfg, store, {"what": "week", "d": monday.isoformat()})
-    svg = share.card(*share.titles("week", start, end), p, streak, names)
+    what, start, end, p, streak, names, size, series, rng = web._share_period(
+        cfg, store, {"what": "week", "d": monday.isoformat()})
+    assert (what, size, rng, start) == ("week", "wide", "", monday)
+    assert [d for d, _ in series] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] and any(m for _, m in series)
     import xml.dom.minidom
-    xml.dom.minidom.parseString(svg)
-    assert "xoo" not in svg and "mic" not in svg and "http" not in svg.replace("http://www.w3.org/2000/svg", "")
-    named = share.card(*share.titles("week", start, end), p, streak, True)
-    assert "Top projects: xoo" in named
+    for sz in ("wide", "square"):
+        svg = share.card(*share.titles("week", start, end), p, streak, names, sz, series)
+        root = xml.dom.minidom.parseString(svg).documentElement
+        assert (root.getAttribute("width"), root.getAttribute("height")) == tuple(map(str, share.SIZES[sz]))
+        assert "xoo" not in svg and "http" not in svg.replace("http://www.w3.org/2000/svg", "")
+    named = share.card(*share.titles("week", start, end), p, streak, True, "wide", series)
+    assert "Top: xoo" in named
     assert "<script" not in share.card("<script>", "x", p) and "&lt;script&gt;" in share.card("<script>", "x", p)
     html = web.page_share(web.App(1), cfg, {"what": "week", "d": monday.isoformat()})
-    assert 'src="/share.svg?what=week' in html and "Download PNG" in html
+    assert 'src="/share.svg?what=week' in html and "Download PNG" in html and 'class="post"' in html
+
+
+def test_share_card_without_tags_and_text_post(two_weeks, home):
+    from test_accounts import make_cfg
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    _, start, end, p, streak, _, _, series, _ = web._share_period(cfg, store, {"what": "week", "d": monday.isoformat()})
+    p.tags.clear()  # nobody tagged anything: the card and the post still look complete
+    svg = share.card(*share.titles("week", start, end), p, streak, False, "square", series)
+    import xml.dom.minidom
+    xml.dom.minidom.parseString(svg)
+    assert 'class="tag"' not in svg and "Made with Worklog" in svg
+    post = share.text_post(*share.titles("week", start, end), p, streak, False, series)
+    lines = post.splitlines()
+    assert lines[0].startswith("🗓️ My week with Claude") and lines[1] == "" and "⏱️" in lines[2]
+    assert "🧩" not in post and "xoo" not in post and post.endswith("github.com/us-urvin/worklog-for-claude-code")
+    assert "📌 xoo" in share.text_post(*share.titles("week", start, end), p, streak, True, series)
+
+
+def test_share_presets_pick_the_right_period(two_weeks, home, monkeypatch):
+    from test_accounts import make_cfg
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    today = date.today()
+    last = lambda rng: web._share_period(cfg, store, {"range": rng})  # noqa: E731
+    assert last("today")[1:3] == (today, today) and len(last("today")[7]) == 24
+    assert last("yesterday")[1] == today - timedelta(days=1)
+    this_monday = today - timedelta(days=today.weekday())
+    assert last("this-week")[1] == this_monday and last("last-week")[1] == this_monday - timedelta(days=7)
+    assert last("last-week")[2] == this_monday - timedelta(days=1)
+    lm = last("last-month")
+    assert lm[1].day == 1 and lm[2] == today.replace(day=1) - timedelta(days=1)
+    assert last("this-year")[0] == "year" and len(last("this-year")[7]) == 12
+    assert web._share_period(cfg, store, {})[8] == "this-week"  # the default
+    assert web._share_period(cfg, store, {"range": "nonsense", "what": "day"})[0] == "day"
+    html = web.page_share(web.App(1), cfg, {"range": "last-week", "size": "square"})
+    assert 'class="seg on" href="/share?range=last-week' in html and 'data-w="1080"' in html
 
 
 def test_year_page_and_settings(two_weeks, home, monkeypatch):

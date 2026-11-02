@@ -227,7 +227,7 @@ claude-worklog timesheet --from 2026-11-01 --to 2026-11-15 --account work --roun
 
 **Where you left off** sits at the top of Today: the last three projects, what you were doing (the summary line or your last prompt), PR and ticket numbers, the branch and open tasks.
 
-**Ask your worklog** (the box on Today and Trends) searches at once, on your computer. It looks in project names, summaries, PR and ticket numbers, open tasks and, if needed, your prompts. It understands phrases like "yesterday", "last week", "October" or "last 10 days". With AI summaries on, **Ask Claude** writes a short answer with links to the days. It reads a small excerpt of your saved notes for those days (never your code), using the account and model chosen for summaries. The last 20 answers stay on this computer. From the terminal: `claude-worklog ask "what did I do last week?"` (add `--claude` for a written answer).
+**Ask your worklog** (the box on Today and Trends) searches at once, on your computer. It looks in project names, summaries, PR and ticket numbers, open tasks and your prompts of the last 60 days. Small typos and other word endings still match ("setlement" finds "settlement", "review" finds "reviewed"), and "PR" also finds "pull request". The best matches come first and the matching words are highlighted. It understands phrases like "yesterday", "last week", "October" or "last 10 days". With AI summaries on, tick **Ask Claude** next to the box and Search always gives a short written answer, with links to the days; leave it unticked for the quick search. It reads a small excerpt of your saved notes for those days (never your code), using the account and model chosen for summaries. The last 20 answers stay on this computer. From the terminal: `claude-worklog ask "what did I do last week?"` (add `--claude` for a written answer).
 
 **More on each card**:
 - PR and ticket numbers such as `#505` or `XOO2-295`, found in your prompts, commands and branch names. `#505` links to the repo's pull request. Tickets link to your tracker once you set **Settings → Links and cost**.
@@ -255,7 +255,7 @@ It updates after every sync (hourly, and when a session ends) and after the nigh
 
 ## Share cards, badges and your year
 
-**Share** (from Trends) turns a day, week, month or year into a 1200×630 image: hours, sessions, the number of projects, the kind of work, your streak and the top model. Project names appear only if you tick them. Prompts, files, accounts and e-mails never do. **Download PNG** saves it, and **Copy text** gives the same numbers as one line for a post.
+**Share** (from Trends) turns a period into an image to post. Pick **Today, Yesterday, This week, Last week, This month, Last month or This year**, or any other day, week or month. Choose **Wide** (1200×630, for X and LinkedIn) or **Square** (1080×1080, for Instagram). The card shows your hours, sessions, number of projects, a bar chart of the period, your streak, the kind of work (if tagged) and the top model. Project names appear only if you turn them on. Prompts, files, accounts and e-mails never do. **Download PNG** saves it, and **Copy text** copies a ready-made post, shown under the card.
 
 **Badges** (Trends, with Fun mode on) are worked out from your history, for example a 7-day streak, a night-owl session, or 5 failing test runs fixed in a week. A badge earned in the last week celebrates once.
 

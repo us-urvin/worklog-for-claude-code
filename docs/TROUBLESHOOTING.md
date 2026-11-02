@@ -83,7 +83,9 @@ Click **✏️ Edit** on the card and pick the right project under **Move to ano
 
 ## Timesheet hours look too low or too high
 
-Hours are **active time**: gaps over 15 minutes between messages are breaks, and sessions at the same time count once. Waiting a long time for Claude, or reading without typing, can count as a break. To count from the first to the last message instead, set `time = "wall"` in the `[report]` section of the config. Days from before 0.4.0 are marked "≈" and always use first to last message.
+Hours are **active time**: gaps over 15 minutes between messages are breaks, and sessions at the same time count once. Waiting a long time for Claude, or reading without typing, can count as a break. To count from the first to the last message instead, set `time = "wall"` in the `[report]` section of the config.
+
+**Hours look far too high on Trends (like 10 hours for a short day)?** Sessions recorded before 0.4.0 had no active time. Since 0.5.1 they're estimated (marked "≈"), and the last 30 days are read again once after updating. To do it again, open **Settings → Older days** and click **Re-read the last 30 days**.
 
 ## A session is counted under the wrong account
 

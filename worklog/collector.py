@@ -241,6 +241,20 @@ def _watched_login(watched: dict, config_dir: Path, started: datetime | None,
     return None, "default" if shared else "folder"
 
 
+REFRESH_DAYS = 30  # Claude Code keeps its logs about this long by default (cleanupPeriodDays)
+
+
+def refresh_recent(cfg: Config, days: int = REFRESH_DAYS, batch: int = 5) -> int:
+    """Read the last `days` days again, so records made by older versions get active time, PRs, tests and
+    tasks. A few days at a time, so the hourly sync and the hook never wait long for the data repo."""
+    today = date.today()
+    all_days = [today - timedelta(days=i) for i in reversed(range(days))]
+    written = 0
+    for i in range(0, len(all_days), batch):
+        written += collect(cfg, all_days[i:i + batch])
+    return written
+
+
 def collect(cfg: Config, days: list[date]) -> int:
     store = GitStore(cfg.store_repo)
     logins: dict[str, Identity] = session_logins()  # local state written by the SessionStart hook

@@ -33,13 +33,81 @@ def _history_path() -> Path:
     return STATE_DIR / "ask.json"
 
 
+_SHORT = {"pr", "prs", "mr", "ui", "qa", "ci", "db", "js", "ts", "go"}  # short words that mean something
+
+
 def words(question: str) -> list[str]:
     out = []
     for w in _WORD.findall(question.lower()):
-        w = w.strip(".-")
-        if len(w) >= 3 and w not in _STOP or w.startswith("#") or re.match(r"^[a-z][a-z0-9]+-\d+$", w):
+        w = w.strip(".-?!,")
+        if not w or w in out:
+            continue
+        if (len(w) >= 3 and w not in _STOP) or w in _SHORT or w.startswith("#") or re.match(r"^[a-z][a-z0-9]+-\d+$", w):
             out.append(w)
     return out
+
+
+def patterns(term: str) -> list[re.Pattern]:
+    """How a word of the question is found in your notes. Words match by their start, so a typo at the end
+    ("reviewn") or another ending ("reviewed", "reviews") still matches; "PR" also finds "pull request" and #505."""
+    if term.startswith("#") or re.match(r"^[a-z][a-z0-9]+-\d+$", term):
+        return [re.compile(re.escape(term), re.I)]
+    if term in ("pr", "prs", "mr"):
+        return [re.compile(r"\b(?:prs?|mrs?|pull requests?|merge requests?)\b", re.I), re.compile(r"(?<![\w&])#\d+\b")]
+    base = re.sub(r"(?:ies|es|ed|ing|s|y|e)$", "", term) if len(term) > 4 else term
+    stem = base[:5] if len(base) >= 3 else term
+    return [re.compile(rf"\b{re.escape(stem)}", re.I)]
+
+
+def _close_words(term: str, vocab: set[str]) -> list[str]:
+    """Words in your notes spelled almost like `term` (for typos such as "setlement" or "fixx")."""
+    import difflib
+    if len(term) < 4 or term.startswith("#") or term in _SHORT:
+        return []
+    return difflib.get_close_matches(term, vocab, n=3, cutoff=0.8)
+
+
+def _matches(text: str, pats: list[list[re.Pattern]]) -> tuple[set[int], int]:
+    """(which question words appear in `text`, how many times in all)."""
+    hit, count = set(), 0
+    for i, group in enumerate(pats):
+        n = sum(len(pt.findall(text)) for pt in group)
+        if n:
+            hit.add(i)
+            count += n
+    return hit, count
+
+
+def snippet(text: str, pats: list[list[re.Pattern]], width: int = 200) -> str:
+    """About `width` characters of `text` around the first match, cut at word boundaries."""
+    text = " ".join(text.split())
+    starts = [m.start() for group in pats for pt in group for m in [pt.search(text)] if m]
+    if len(text) <= width:
+        return text
+    first = min(starts) if starts else 0
+    a = max(0, first - width // 3)
+    b = min(len(text), a + width)
+    a = text.rfind(" ", 0, a) + 1 if a else 0
+    cut = text[a:b]
+    if b < len(text):
+        cut = cut[: cut.rfind(" ")] if " " in cut else cut
+    return ("…" if a else "") + cut + ("…" if b < len(text) else "")
+
+
+def highlight(text: str, pats: list[list[re.Pattern]]) -> str:
+    """`text` as safe HTML with the matching words in <mark>."""
+    from html import escape
+    spans = sorted((m.start(), m.end()) for group in pats for pt in group for m in pt.finditer(text))
+    out, pos = [], 0
+    for a, b in spans:
+        if a < pos:
+            continue
+        end = b
+        while end < len(text) and (text[end].isalnum() or text[end] == "_"):
+            end += 1  # mark the whole word ("revie" -> "reviewed")
+        out.append(escape(text[pos:a]) + "<mark>" + escape(text[a:end]) + "</mark>")
+        pos = end
+    return "".join(out) + escape(text[pos:])
 
 
 def date_range(question: str, today: date) -> tuple[date, date] | None:
@@ -76,46 +144,78 @@ def date_range(question: str, today: date) -> tuple[date, date] | None:
     return None
 
 
-def _score(text: str, terms: list[str]) -> int:
-    t = text.lower()
-    return sum(3 if term.startswith("#") or "-" in term else 1 for term in terms if term in t)
+DEEP_DAYS = 60  # your prompts are searched this far back; summaries and tasks as far as SEARCH_DAYS
 
 
 def search(cache, question: str, today: date, limit: int = 15) -> list[dict]:
-    """Days and projects that match the question, best first: {"day", "project", "line", "minutes", "why"}."""
+    """Days and projects that match the question, best first. Each hit: day, project, minutes, tag, refs,
+    `line` (an excerpt), `matched` (how many words of the question it has), `why` (where they were found) and
+    `pats` (what was looked for, typo fixes included, for highlighting) and `also` (other days with the same note)."""
+    from .report import aggregate
     terms = words(question)
+    pats = [patterns(t) for t in terms]
     span = date_range(question, today)
     start, end = span or (today - timedelta(days=SEARCH_DAYS - 1), today)
     entries = cache.days(start, end)
-    hits = []
+    found: dict[tuple, dict] = {}
+
+    def add(d, name, minutes, tag, refs, where, text):
+        hit, count = _matches(text, pats) if pats else (set(), 0)
+        if pats and not hit:
+            return
+        h = found.setdefault((d, name), {"day": d, "project": name, "minutes": minutes, "tag": tag, "refs": refs,
+                                         "hit": set(), "count": 0, "why": [], "best": (0, 0, "")})
+        h["hit"] |= hit
+        h["count"] += count
+        if where not in h["why"]:
+            h["why"].append(where)
+        if (len(hit), count) > h["best"][:2]:
+            h["best"] = (len(hit), count, text)
+
+    texts: list[tuple] = []  # (args, where, text): everything that can be searched, read once
     for d, e in entries.items():
         for p in e.get("projects") or []:
-            fields = {"project name": p["name"], "summary": p.get("line", ""), "kind of work": p.get("tag", ""),
-                      "PR or ticket": " ".join(p.get("refs") or []), "open tasks": " ".join(p.get("open") or []),
-                      "last prompt": p.get("last_prompt", "")}
-            score = sum(_score(v, terms) for v in fields.values()) if terms else 0
-            if score or (span and not terms):
-                why = [k for k, v in fields.items() if terms and _score(v, terms)]
-                hits.append({"day": d, "project": p["name"], "line": p.get("line", ""), "minutes": p["minutes"],
-                             "tag": p.get("tag", ""), "refs": p.get("refs") or [], "score": score,
-                             "why": ", ".join(why) or "in the days you named"})
-    if terms and len(hits) < 5:  # look deeper: the prompts themselves
-        from .report import aggregate
-        known = {(h["day"], h["project"]) for h in hits}
-        for d in sorted(entries, reverse=True):
-            if not entries[d].get("n"):
+            args = (d, p["name"], p["minutes"], p.get("tag", ""), p.get("refs") or [])
+            if not pats:
+                if span:
+                    texts.append((args, "the days you named", p.get("line", "")))
                 continue
-            records = list(cache.store.iter_json(f"records/{d.isoformat()}"))
-            _, projects = aggregate(records, cache.ov, cache.mode)
+            texts += [(args, "project name", p["name"]), (args, "summary", p.get("line", "")),
+                      (args, "kind of work", p.get("tag", "")), (args, "PR or ticket", " ".join(p.get("refs") or [])),
+                      (args, "open tasks", " · ".join(p.get("open") or []))]
+    if pats:  # the prompts themselves: where most of what you did is written down
+        deep_from = max(start, today - timedelta(days=DEEP_DAYS - 1))
+        for d in sorted((d for d in entries if d >= deep_from and entries[d].get("n")), reverse=True):
+            _, projects = aggregate(list(cache.store.iter_json(f"records/{d.isoformat()}")), cache.ov, cache.mode)
             for p in projects.values():
-                score = sum(_score(q, terms) for _, q in p.prompts)
-                if score and (d, p.name) not in known:
-                    line = next((q.splitlines()[0][:160] for _, q in p.prompts if _score(q, terms)), "")
-                    hits.append({"day": d, "project": p.name, "line": line, "minutes": p.minutes, "tag": "",
-                                 "refs": p.refs, "score": score, "why": "your prompts"})
-            if len(hits) >= limit:
-                break
+                for _, q in p.prompts:
+                    texts.append(((d, p.name, p.minutes, "", p.refs), "your prompts", q))
+        missing = [i for i, group in enumerate(pats) if not any(pt.search(t) for _, _, t in texts for pt in group)]
+        if missing:  # a word found nowhere is probably misspelt: also look for the closest real words
+            vocab = {w for _, _, t in texts for w in re.findall(r"[a-z]{3,}", t.lower())}
+            for i in missing:
+                pats[i] = pats[i] + [re.compile(rf"\b{re.escape(w)}\b", re.I) for w in _close_words(terms[i], vocab)]
+    for args, where, text in texts:
+        add(*args, where, text)
+    hits = []
+    for h in found.values():
+        text = h["best"][2]
+        hits.append({"day": h["day"], "project": h["project"], "minutes": h["minutes"], "tag": h["tag"],
+                     "refs": h["refs"], "line": snippet(text, pats) if pats else text, "matched": len(h["hit"]),
+                     "score": 10 * len(h["hit"]) + min(h["count"], 9), "why": ", ".join(h["why"][:3]),
+                     "of": len(terms), "pats": pats})
     hits.sort(key=lambda h: (-h["score"], -h["day"].toordinal()))
+    unique: dict[tuple, dict] = {}  # the same note on many days is shown once, with the other days listed
+    for h in hits:
+        first = unique.setdefault((h["project"], h["line"]), dict(h, also=[]))
+        if first is not h and first["day"] != h["day"]:
+            first["also"].append(h["day"])
+    hits = list(unique.values())
+    for h in hits:
+        h["also"].sort(reverse=True)
+    if hits and len(terms) > 1:  # when some hits have every word, the ones with only one word are mostly noise
+        best = hits[0]["matched"]
+        hits = [h for h in hits if h["matched"] >= max(1, best - 1)]
     return hits[:limit]
 
 
@@ -126,7 +226,7 @@ def context(cache, question: str, today: date) -> tuple[str, list[date]]:
         days = [d for d, e in cache.days(*span).items() if e.get("n")]
     else:
         found = search(cache, question, today, limit=40)
-        days = sorted({h["day"] for h in found}, reverse=True)[:14] or [
+        days = sorted({d for h in found for d in [h["day"], *h.get("also", [])]}, reverse=True)[:14] or [
             d for d, e in cache.days(today - timedelta(days=29), today).items() if e.get("n")]
     days = sorted(set(days), reverse=True)
     from .report import aggregate
@@ -168,9 +268,11 @@ def ask_claude(cfg, question: str, notes: str, today: date) -> str:
         return "There's nothing recorded for the days your question is about."
     prompt = (
         f"Today is {today.isoformat()}. Answer a developer's question about their own work, using ONLY the work "
-        "log notes below (taken from their Claude Code sessions). Answer in plain, simple English, short: one "
-        "sentence to a short list. Give hours as e.g. '3h 20m'. Mention the day of each fact as [YYYY-MM-DD]. If "
-        "the notes don't contain the answer, say so in one sentence. Do not use any tools.\n\n"
+        "log notes below (taken from their Claude Code sessions). Answer in plain, simple English that anyone "
+        "understands: start with the direct answer in one sentence, then add at most a short list of '- ' points if "
+        "it helps. No headings, no tables, no jargon. Give hours as e.g. '3h 20m'. Put the day of each fact as "
+        "[YYYY-MM-DD]. Words may have typos (e.g. 'reviewn' means 'reviewed'). If the notes don't contain the "
+        "answer, say so in one sentence. Do not use any tools.\n\n"
         f"<question>\n{question[:MAX_QUESTION]}\n</question>\n\n<notes>\n{notes}\n</notes>")
     SUMMARIZER_CWD.mkdir(parents=True, exist_ok=True)  # the collector never records these runs
     cmd = [exe, "-p", prompt, "--output-format", "text"]

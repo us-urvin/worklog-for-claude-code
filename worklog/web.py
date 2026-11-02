@@ -419,14 +419,25 @@ border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;ani
 .pill.tag{color:var(--accent-2);border-color:color-mix(in srgb,var(--accent-2) 45%,transparent)}
 a.btn.edit{padding:5px 12px;font-size:.82rem}
 .para{margin:8px 0 6px;max-width:72ch;font-size:1rem}.entry details{margin-top:6px}
-img.sharecard{width:100%;height:auto;border-radius:16px;border:1px solid var(--rule);display:block}
+img.sharecard{width:100%;height:auto;border-radius:16px;border:1px solid var(--rule);display:block;margin:14px 0}
+img.sharecard.square{max-width:560px}.segs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+a.seg{padding:7px 14px;border-radius:999px;border:1px solid var(--rule);background:var(--glass-hi);color:var(--ink);
+text-decoration:none;font-weight:600;font-size:.88rem}a.seg:hover{border-color:var(--accent)}
+a.seg.on{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:var(--on-accent);border-color:transparent}
+.sharebar{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:flex-start}.sharebar .segs{margin:0}
+pre.post{white-space:pre-wrap;font:inherit;font-size:.95rem;line-height:1.6;background:var(--field);border:1px solid var(--rule);
+border-radius:14px;padding:14px 16px;margin:8px 0}details.custom-period{margin:0 0 16px}
 .goals{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 18px}.goal{display:flex;gap:12px;align-items:center;padding:10px 14px;
 border-radius:16px;background:var(--glass);border:1px solid var(--rule)}.goal.bad{border-color:var(--bad)}
 .gring{width:52px;height:52px}.gring .track{fill:none;stroke:var(--glass-hi);stroke-width:4}
 .gring .fill{fill:none;stroke:var(--accent-2);stroke-width:4;stroke-linecap:round}.goal.bad .gring .fill{stroke:var(--bad)}
 .gring text{font:800 8px/1 system-ui,sans-serif;fill:var(--ink)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.askbox{display:flex;gap:8px;margin:0 0 18px}.askbox input{max-width:none;flex:1}.askbox.compact{margin:14px 0 18px}
+.askbox{display:flex;gap:8px;margin:0 0 18px;align-items:center;flex-wrap:wrap}.askbox input[type=text]{flex:1 1 260px}
+.aitoggle{display:flex;align-items:center;gap:8px;margin:0;font-weight:600;font-size:.9rem;padding:0 6px;white-space:nowrap;cursor:pointer}
+.aitoggle input{margin:0}mark{background:color-mix(in srgb,var(--accent-2) 30%,transparent);color:inherit;border-radius:4px;padding:0 2px}
+.snip{margin:4px 0 2px;line-height:1.5}.answerbox{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))!important}
+.answer p{margin:6px 0}.answer ul,.answer ol{margin:6px 0;padding-left:1.3em}.answer li{margin:3px 0}.askbox input[type=text]{max-width:none}.askbox.compact{margin:14px 0 18px}
 .leaveoff h2{font-size:1rem;margin:0 0 10px}.leaves{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}
 @media (max-width:820px){.leaves{grid-template-columns:1fr}}
 div.leave{display:block;padding:14px 16px;border-radius:16px;background:var(--glass);border:1px solid var(--rule);color:var(--ink);
@@ -445,8 +456,8 @@ ul.badges{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:
 .badge{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:14px;border:1px dashed var(--rule);opacity:.55}
 .badge.on{opacity:1;border-style:solid;border-color:color-mix(in srgb,var(--accent) 45%,var(--rule));background:var(--glass-hi)}
 .badge .be{font-size:1.5rem}.badge .muted{font-size:.8rem}
-ul.hits,ul.answers{list-style:none;margin:0;padding:0}ul.hits li,ul.answers li{padding:10px 0;border-bottom:1px solid var(--rule)}
-ul.hits li:last-child,ul.answers li:last-child{border-bottom:0}.answer{margin:6px 0;max-width:72ch}
+ul.hits,ul.answers{list-style:none;margin:0;padding:0}ul.hits>li,ul.answers>li{padding:10px 0;border-bottom:1px solid var(--rule)}
+ul.hits>li:last-child,ul.answers>li:last-child{border-bottom:0}.answer ul{list-style:disc}.answer ol{list-style:decimal}#answer{scroll-margin-top:110px}.answer{margin:6px 0;max-width:72ch}
 .refs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}.ref{font-size:.78rem;font-weight:700;padding:2px 9px;border-radius:8px;
 border:1px solid color-mix(in srgb,var(--accent-2) 45%,var(--rule));color:var(--accent-2);background:var(--glass-hi);text-decoration:none;
 font-family:"JetBrains Mono","Ubuntu Mono",monospace}a.ref:hover{border-color:var(--accent-2)}
@@ -520,9 +531,21 @@ var s=window.getSelection();s.removeAllRanges();s.addRange(r)}say(navigator.plat
 if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(b.dataset.copy).then(function(){say('Copied!')},manual)}else{manual()}});
 var W=window.worklog={};
 W.init=function(){
+(function(){var box=document.querySelector('form.askbox'),ai=document.getElementById('askai');if(!box||!ai)return;
+try{ai.checked=localStorage.getItem('worklog.askai')==='1'}catch(e){}
+ai.addEventListener('change',function(){try{localStorage.setItem('worklog.askai',ai.checked?'1':'0')}catch(e){}});
+box.addEventListener('submit',function(ev){if(!ai.checked||!window.fetch)return;ev.preventDefault();
+var q=box.querySelector('[name=q]').value.trim();if(!q)return;var btn=box.querySelector('button');btn.disabled=true;
+fetch('/ask',{method:'POST',headers:{'X-Worklog':'fetch','Content-Type':'application/x-www-form-urlencoded'},
+body:'csrf='+encodeURIComponent(box.dataset.csrf)+'&q='+encodeURIComponent(q)}).then(function(r){return r.json()}).then(function(j){
+if(j.error){btn.disabled=false;W.flash(j.error,'bad');return}W.flash('Asking Claude… it reads your notes for the days that matter','run');
+W.wait().then(function(s){fetch('/jobs/dismiss',{method:'POST',headers:{'X-Worklog':'fetch','Content-Type':'application/x-www-form-urlencoded'},
+body:'csrf='+encodeURIComponent(box.dataset.csrf)}).catch(function(){});
+if(s.ok===false){btn.disabled=false;var f=document.getElementById('flash');if(f)f.remove();W.flash(s.message||'No answer.','bad');return}
+location.href='/ask?q='+encodeURIComponent(q)+'#answer'})}).catch(function(){btn.disabled=false;W.flash('Worklog didn’t answer.','bad')})})})();
 (function(){var b=document.getElementById('sharepng'),img=document.getElementById('sharecard');if(!b||!img)return;
-b.addEventListener('click',function(){var c=document.createElement('canvas');c.width=1200;c.height=630;
-var draw=function(){c.getContext('2d').drawImage(img,0,0,1200,630);c.toBlob(function(blob){if(!blob){location.href=img.src;return}
+b.addEventListener('click',function(){var c=document.createElement('canvas'),W=+b.dataset.w||1200,H=+b.dataset.h||630;
+c.width=W;c.height=H;var draw=function(){c.getContext('2d').drawImage(img,0,0,W,H);c.toBlob(function(blob){if(!blob){location.href=img.src;return}
 var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=b.dataset.name||'worklog.png';document.body.appendChild(a);
 a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)},'image/png')};
 if(img.complete){draw()}else{img.addEventListener('load',draw,{once:true})}})})();
@@ -888,13 +911,53 @@ def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov
 </form></section>"""
 
 
-def _ask_box(q: str = "", compact: bool = False) -> str:
-    """A question box. Search runs here at once; "Ask Claude" uses your account (on the Ask page)."""
-    return (f'<form method="get" action="/ask" class="askbox{" compact" if compact else ""}" role="search">'
+def _ask_box(q: str = "", compact: bool = False, app: App | None = None, cfg: Config | None = None) -> str:
+    """The question box. Search runs on this computer at once; tick "Ask Claude" for a written answer."""
+    ai = ""
+    if app is not None and cfg is not None and cfg.use_ai:
+        ai = ('<label class="aitoggle" title="Claude reads your saved notes for the days that matter (never your code) '
+              'and writes a short answer, with your own account"><input type="checkbox" name="ai" value="1" '
+              'id="askai"> Ask Claude</label>')
+    csrf = f' data-csrf="{e(app.csrf)}"' if app is not None else ""
+    return (f'<form method="get" action="/ask" class="askbox{" compact" if compact else ""}" role="search"{csrf}>'
             f'<label for="askq" class="sr">Ask your worklog</label>'
             f'<input type="text" id="askq" name="q" value="{e(q)}" maxlength="500" required '
-            f'placeholder="Ask your worklog… e.g. When did I review PR 505?">'
+            f'placeholder="Ask your worklog… e.g. When did I review David&#39;s PR?">{ai}'
             f'<button>Search</button></form>')
+
+
+def answer_html(text: str) -> str:
+    """Claude's answer as tidy HTML: paragraphs, bullet and numbered lists, **bold**, `code`, and [day] links."""
+    out, items, kind = [], [], ""
+
+    def inline(t: str) -> str:
+        t = e(t)
+        t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+        t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
+        t = re.sub(r"\[?\b(20\d\d-\d\d-\d\d)\b\]?", r'<a href="/?d=\1">\1</a>', t)
+        return t
+
+    def flush():
+        nonlocal items, kind
+        if items:
+            out.append(f"<{kind}>" + "".join(f"<li>{x}</li>" for x in items) + f"</{kind}>")
+        items, kind = [], ""
+    for line in text.strip().splitlines():
+        stripped = line.strip()
+        m = re.match(r"^(?:[-*•]|(\d+)[.)])\s+(.*)$", stripped)
+        if m:
+            want = "ol" if m.group(1) else "ul"
+            if kind and kind != want:
+                flush()
+            kind = want
+            items.append(inline(m.group(2)))
+            continue
+        flush()
+        if stripped:
+            heading = re.match(r"^#{1,4}\s+(.*)$", stripped)
+            out.append(f"<p><b>{inline(heading.group(1))}</b></p>" if heading else f"<p>{inline(stripped)}</p>")
+    flush()
+    return "".join(out)
 
 
 def _leave_off_html(items: list[dict], cfg: Config) -> str:
@@ -1036,7 +1099,7 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
     year = today.year if anchor.year == today.year else anchor.year
     badges_html = _badges_html(insights.badges(cache.days(today - timedelta(days=399), today)), cfg) if cfg.fun else ""
     cache.save()
-    return (head + _ask_box(compact=True)
+    return (head + _ask_box(compact=True, app=app, cfg=cfg)
             + f'<div class="tiles">{tiles_html}</div>'
             + f'<div class="strip"><div class="legend"><span>Hours per {word}</span></div>{viz.column_bars(series)}</div>'
             + f'<section class="block"><h2>In short</h2><ul class="said">{lines}</ul>'
@@ -1050,12 +1113,26 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
               f'<a class="btn quiet" href="/share?what={word}&d={anchor.isoformat()}">Share this {word}</a></p>')
 
 
+SHARE_RANGES = (("today", "Today"), ("yesterday", "Yesterday"), ("this-week", "This week"), ("last-week", "Last week"),
+                ("this-month", "This month"), ("last-month", "Last month"), ("this-year", "This year"))
+
+
 def _share_period(cfg: Config, store, q: dict):
-    """(what, start, end, period, streak, names) for the share card from the address bar."""
+    """(what, start, end, period, streak, names, size, series, range) for the share card from the address bar."""
     from . import insights
-    what = q.get("what") if q.get("what") in ("day", "week", "month", "year") else "week"
     today = date.today()
+    rng = q.get("range") if q.get("range") in dict(SHARE_RANGES) else ""
+    what = q.get("what") if q.get("what") in ("day", "week", "month", "year") else "week"
     anchor = min(_parse_date(q.get("d")) or today, today)
+    if rng:
+        monday = today - timedelta(days=today.weekday())
+        first = today.replace(day=1)
+        what, anchor = {"today": ("day", today), "yesterday": ("day", today - timedelta(days=1)),
+                        "this-week": ("week", today), "last-week": ("week", monday - timedelta(days=7)),
+                        "this-month": ("month", today), "last-month": ("month", first - timedelta(days=1)),
+                        "this-year": ("year", today)}[rng]
+    elif not q.get("d") and not q.get("what"):
+        rng = "this-week"
     if what == "day":
         start = end = anchor
     elif what == "week":
@@ -1072,33 +1149,72 @@ def _share_period(cfg: Config, store, q: dict):
     cache.save()
     p = insights.period(entries, start, min(end, today), cfg.cost_custom)
     streak = viz.streak({d for d, x in span.items() if x.get("n")}, min(end, today))
-    return what, start, end, p, streak, q.get("names") == "1"
+    if what == "day":
+        series = [(f"{h:02d}", p.hours[h]) for h in range(24)]
+    elif what == "year":
+        months = [0] * 12
+        for d, m in p.by_day.items():
+            months[d.month - 1] += m
+        series = [(date(start.year, i + 1, 1).strftime("%b"), months[i]) for i in range(12)]
+    else:
+        days, d = [], start
+        while d <= end:
+            days.append((d.strftime("%a") if what == "week" else str(d.day), p.by_day.get(d, 0)))
+            d += timedelta(days=1)
+        series = days
+    size = "square" if q.get("size") == "square" else "wide"
+    return what, start, end, p, streak, q.get("names") == "1", size, series, rng
 
 
 def page_share(app: App, cfg: Config, q: dict) -> str:
+    from urllib.parse import urlencode
+
     from . import share
     store = _store(cfg)
     if store is None:
         return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
-    what, start, end, p, streak, names = _share_period(cfg, store, q)
+    what, start, end, p, streak, names, size, series, rng = _share_period(cfg, store, q)
     title, sub = share.titles(what, start, end)
-    params = f"what={what}&d={start.isoformat()}" + ("&names=1" if names else "")
-    opts = "".join(f'<option value="{v}"{" selected" if v == what else ""}>{n}</option>'
-                   for v, n in (("day", "A day"), ("week", "A week"), ("month", "A month"), ("year", "A year")))
-    form = (f'<form method="get" action="/share" class="tsform"><div><label for="sh-what">Share</label>'
-            f'<select id="sh-what" name="what">{opts}</select></div><div><label for="sh-d">Including</label>'
-            f'<input type="date" id="sh-d" name="d" value="{start.isoformat()}" max="{date.today().isoformat()}"></div>'
-            f'<div class="check"><input type="checkbox" id="sh-names" name="names" value="1"{" checked" if names else ""}>'
-            f'<label for="sh-names">Show project names</label></div><div><button>Show</button></div></form>')
-    text = share.text_line(title, sub, p, streak)
-    return (f'<div class="daynav"><h1><span class="grad">Share</span><small>{e(sub)}</small></h1></div>' + form
-            + f'<section class="block"><img class="sharecard" id="sharecard" src="/share.svg?{e(params)}" width="1200" '
-              f'height="630" alt="{e(text)}"><div class="row">'
-              f'<button type="button" id="sharepng" data-name="worklog-{e(what)}-{start.isoformat()}.png">⬇ Download PNG</button>'
+
+    def link(**over) -> str:
+        base = {"range": rng, "size": size, "names": "1" if names else ""}
+        if not rng:
+            base.update(what=what, d=start.isoformat())
+        base.update(over)
+        if over.get("range"):
+            base.pop("what", None)
+            base.pop("d", None)
+        return "/share?" + urlencode({k: v for k, v in base.items() if v})
+    presets = "".join(f'<a class="seg{" on" if v == rng else ""}" href="{e(link(range=v))}">{n}</a>' for v, n in SHARE_RANGES)
+    sizes = "".join(f'<a class="seg{" on" if v == size else ""}" href="{e(link(size=v))}">{n}</a>'
+                    for v, n in (("wide", "Wide · X, LinkedIn"), ("square", "Square · Instagram")))
+    names_link = link(names="" if names else "1")
+    params = urlencode({k: v for k, v in {"what": what, "d": start.isoformat(), "size": size,
+                                          "names": "1" if names else ""}.items() if v})
+    w, h = share.SIZES[size]
+    post = share.text_post(title, sub, p, streak, names, series)
+    custom_opts = "".join(f'<option value="{v}"{" selected" if v == what and not rng else ""}>{n}</option>'
+                          for v, n in (("day", "A day"), ("week", "A week"), ("month", "A month"), ("year", "A year")))
+    custom = (f'<details class="custom-period"{" open" if not rng else ""}><summary>Another day, week or month…</summary>'
+              f'<form method="get" action="/share" class="tsform"><input type="hidden" name="size" value="{size}">'
+              f'<div><label for="sh-what">Share</label><select id="sh-what" name="what">{custom_opts}</select></div>'
+              f'<div><label for="sh-d">Including</label><input type="date" id="sh-d" name="d" value="{start.isoformat()}" '
+              f'max="{date.today().isoformat()}"></div><div><button>Show</button></div></form></details>')
+    empty = "" if p.minutes else ('<p class="state-bad" style="margin:0 0 10px">Nothing recorded in this period yet: '
+                                  'pick another one.</p>')
+    return (f'<div class="daynav"><h1><span class="grad">Share</span><small>{e(sub)}</small></h1></div>'
+            + f'<div class="segs" style="margin-top:12px">{presets}</div>{custom}'
+            + f'<section class="block">{empty}<div class="sharebar"><div class="segs">{sizes}</div>'
+              f'<a class="seg{" on" if names else ""}" href="{e(names_link)}">{"✓ " if names else ""}Project names</a></div>'
+              f'<img class="sharecard {size}" id="sharecard" src="/share.svg?{e(params)}" width="{w}" height="{h}" '
+              f'alt="{e(share.text_line(title, sub, p, streak))}"><div class="row">'
+              f'<button type="button" id="sharepng" data-w="{w}" data-h="{h}" '
+              f'data-name="worklog-{e(what)}-{start.isoformat()}-{size}.png">⬇ Download PNG</button>'
               f'<a class="btn quiet" href="/share.svg?{e(params)}" download="worklog-{e(what)}-{start.isoformat()}.svg">SVG</a>'
-              f'<button type="button" class="quiet copy" data-copy="{e(text)}">Copy text</button></div>'
-              f'<p class="muted" style="font-size:.85rem">Only totals are shown: no prompts, files, accounts or '
-              f'e-mails. Project names only if you tick them.</p></section>')
+              f'<button type="button" class="quiet copy" data-copy="{e(post)}">Copy text</button></div>'
+              f'<h2 style="margin-top:18px">Text for your post</h2><pre class="post">{e(post)}</pre>'
+              f'<p class="muted" style="font-size:.85rem">Only totals are shown: no prompts, files, accounts or e-mails. '
+              f'Project names only if you turn them on.</p></section>')
 
 
 def page_year(app: App, cfg: Config, q: dict) -> str:
@@ -1168,31 +1284,43 @@ def page_ask(app: App, cfg: Config, q: dict) -> str:
     store = _store(cfg)
     if store is None:
         return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
-    head = '<div class="daynav"><h1><span class="grad">Ask your worklog</span></h1></div>' + _ask_box(question)
+    head = ('<div class="daynav"><h1><span class="grad">Ask your worklog</span></h1></div>'
+            + _ask_box(question, app=app, cfg=cfg))
     body = ""
+    latest = next((x for x in ask.history()[:5] if question and x.get("q", "").strip().lower() == question.lower()), None)
+    if latest:
+        body += (f'<section class="block answerbox" id="answer"><h2>✨ Claude&#39;s answer</h2>'
+                 f'<div class="answer">{answer_html(latest["a"])}</div><p class="muted" style="font-size:.8rem">From your '
+                 f'saved notes · {e(latest["at"][:16].replace("T", " "))}</p></section>')
     if question:
         cache = daycache.DayCache(store, cfg.time_mode)
         hits = ask.search(cache, question, date.today())
         cache.save()
+        pats = hits[0]["pats"] if hits else []  # typo fixes included
         rows = "".join(
             f'<li><a href="/?d={h["day"].isoformat()}"><b>{h["day"]:%a %d %b %Y}</b></a> · {e(h["project"])}'
             + (f' <span class="pill tag">{e(h["tag"])}</span>' if h["tag"] else "")
-            + f' <span class="muted">{_dur(h["minutes"])}</span><div>{e(h["line"])}</div>'
-              f'<div class="muted" style="font-size:.8rem">found in: {e(h["why"])}</div></li>' for h in hits)
+            + f' <span class="muted">{_dur(h["minutes"])}</span><div class="snip">{ask.highlight(h["line"], pats)}</div>'
+              f'<div class="muted" style="font-size:.8rem">found in: {e(h["why"])}'
+            + (f' · {h["matched"]} of {h["of"]} words' if h.get("of", 0) > 1 else "") + "</div>"
+            + (f'<div class="muted" style="font-size:.8rem">Same on {len(h["also"])} more day'
+               f'{"s" * (len(h["also"]) != 1)}: ' + ", ".join(f'<a href="/?d={d.isoformat()}">{d:%d %b}</a>'
+                                                           for d in h["also"][:8])
+               + ("…" if len(h["also"]) > 8 else "") + "</div>" if h.get("also") else "")
+            + "</li>" for h in hits)
         body += (f'<section class="block"><h2>Found {len(hits)} match{"es" * (len(hits) != 1)}</h2>'
                  + (f'<ul class="hits">{rows}</ul>' if rows else
                     '<p class="muted">Nothing matched. Try other words, a project name or a PR number.</p>'))
         if cfg.use_ai:
             busy = " disabled" if app.jobs.snapshot().get("running") else ""
-            body += (f'<form method="post" action="/ask" data-result="dialog" data-oktitle="Answer" '
-                     f'data-badtitle="No answer"><input type="hidden" name="csrf" value="{app.csrf}">'
+            body += (f'<form method="post" action="/ask"><input type="hidden" name="csrf" value="{app.csrf}">'
                      f'<input type="hidden" name="q" value="{e(question)}"><p class="help" style="margin-top:12px">'
                      f'Want a written answer? Claude reads your saved notes for the days that matter (never your code), '
                      f'with your own account.</p><button{busy}>Ask Claude</button></form>')
         body += "</section>"
-    past = ask.history()
+    past = [x for x in ask.history() if not question or x.get("q", "").strip().lower() != question.lower()]
     if past:
-        items = "".join(f'<li><b>{e(x["q"])}</b><div class="answer">{_linkify_days(e(x["a"]))}</div>'
+        items = "".join(f'<li><b>{e(x["q"])}</b><div class="answer">{answer_html(x["a"])}</div>'
                         f'<div class="muted" style="font-size:.8rem">{e(x["at"][:16].replace("T", " "))}</div></li>'
                         for x in past[:10])
         body += f'<section class="block"><h2>Recent answers</h2><ul class="answers">{items}</ul></section>'
@@ -1202,10 +1330,6 @@ def page_ask(app: App, cfg: Config, q: dict) -> str:
                      "What did I do last week?", "When did I last work on a pull request?",
                      "How many hours this month?", "Which tasks are still open?")) + "</ul></section>")
     return head + body
-
-
-def _linkify_days(escaped: str) -> str:
-    return re.sub(r"\[(20\d\d-\d\d-\d\d)\]", r'<a href="/?d=\1">\1</a>', escaped).replace("\n", "<br>")
 
 
 RANGES = (("this-week", "This week"), ("last-week", "Last week"), ("this-month", "This month"),
@@ -1508,7 +1632,7 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
         from . import insights as _ins
         leave = _leave_off_html(_ins.leave_off(cache.days(day - timedelta(days=13), day)), cfg)
         cache.save()
-    body = (head + edit_html + _ask_box(compact=True) + goal + leave + lede + _chart(chart_history, names, day, chat_counts)
+    body = (head + edit_html + _ask_box(compact=True, app=app, cfg=cfg) + goal + leave + lede + _chart(chart_history, names, day, chat_counts)
             + actions + insights
             + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>' + party)
     return body, None
@@ -1958,6 +2082,36 @@ its own key and a nickname:</p>
 that blocks SSH (port 22), use <code>HostName ssh.github.com</code> and add <code>Port 443</code>.</p></details>"""
 
 
+def _refresh_message(cfg: Config) -> str:
+    from .collector import REFRESH_DAYS, refresh_recent
+    n = refresh_recent(cfg)
+    _mark_refreshed()
+    return f"Re-read the last {REFRESH_DAYS} days: {n} session record(s) updated."
+
+
+REFRESH_MARK = "0.5.1"  # bump when a release records something new about past sessions
+
+
+def _refresh_state() -> Path:
+    from .config import STATE_DIR
+    return STATE_DIR / "refreshed.json"
+
+
+def _mark_refreshed() -> None:
+    try:
+        _refresh_state().parent.mkdir(parents=True, exist_ok=True)
+        _refresh_state().write_text(json.dumps({"version": REFRESH_MARK}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def needs_refresh() -> bool:
+    try:
+        return json.loads(_refresh_state().read_text(encoding="utf-8")).get("version") != REFRESH_MARK
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def _write_digest(cfg: Config, store) -> str:
     from . import digest
     with store.lock():
@@ -1983,6 +2137,11 @@ Pull request numbers (<code>#505</code>) link to the project's repo by themselve
 prices (as of {cost.PRICES_AS_OF}). On Pro and Max plans usage counts against your limits instead. Other prices can be set in the
 <code>[cost]</code> section of the config file.</p>
 <div class="row"><button>Save changes</button></div></form></section>
+<section class="block" id="older"><h2>Older days</h2>
+<p class="help">Days recorded by versions before 0.4.0 count time from the first to the last message, so a window left open
+looks like a very long day (marked ≈). Re-reading them from Claude Code&#39;s own logs gives the real active time, plus PRs,
+tests and tasks. Claude Code keeps its logs about 30 days. This runs once by itself after an update.</p>
+<form method="post" action="/settings/refresh">{c}<button class="quiet">Re-read the last 30 days</button></form></section>
 <section class="block" id="goals"><h2>Goals</h2>
 <form method="post" action="/settings/goals">{c}
 <p class="help">A ring on Today shows how close you are. Leave a goal at 0 to turn it off.</p>
@@ -2266,6 +2425,9 @@ class App:
             except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                 return None, str(exc), form
             return "/settings?ok=saved", None, form
+        if path == "/settings/refresh":
+            started = self.jobs.start("Re-reading the last 30 days", lambda: _refresh_message(cfg))
+            return ("/settings?ok=job#older" if started else "/settings#older"), None, form
         if path == "/settings/goals":
             try:
                 hours = float(form.get("hours") or 0)
@@ -2443,7 +2605,7 @@ class App:
             except RuntimeError as exc:
                 raise JobFailed(str(exc)) from None
             ask.remember(question, answer)
-            return answer
+            return "Claude answered. The answer is at the top of the Ask page."
         started = self.jobs.start("Asking Claude", job)
         return (f"/ask?q={quote(question)}&ok=job" if started else f"/ask?q={quote(question)}"), None, form
 
@@ -2673,7 +2835,7 @@ def _parse_date(v: str | None) -> date | None:
     return min(d, date.today())
 
 
-JOB_PATHS = {"/action/collect", "/action/report", "/sources/scan", "/sync/test", "/accounts/forget", "/update",
+JOB_PATHS = {"/settings/refresh", "/action/collect", "/action/report", "/sources/scan", "/sync/test", "/accounts/forget", "/update",
              "/restart", "/timesheet/summaries", "/ask"}
 
 
@@ -2798,8 +2960,8 @@ def make_handler(app: App):
                     store = _store(cfg)
                     if store is None:
                         return self._send(404, "No data repo", "text/plain")
-                    what, start, end, per, streak, names = _share_period(cfg, store, q)
-                    return self._send(200, share.card(*share.titles(what, start, end), per, streak, names),
+                    what, start, end, per, streak, names, size, series, _ = _share_period(cfg, store, q)
+                    return self._send(200, share.card(*share.titles(what, start, end), per, streak, names, size, series),
                                       "image/svg+xml")
                 if url.path == "/year":
                     return self._page("Year", page_year(app, cfg, q), "trends", q.get("ok"))
@@ -2900,6 +3062,9 @@ def serve(port: int = DEFAULT_PORT) -> None:
     if not services.demo_mode():
         app.watcher = watcher.Watcher()
         app.watcher.start()
+        cfg0 = _try_config()
+        if cfg0 is not None and needs_refresh():  # once after an update: older days get real active time
+            app.jobs.start("Updating older days", lambda: _refresh_message(cfg0))
     handler = make_handler(app)
     try:
         servers = [_Server(("127.0.0.1", port), handler)]

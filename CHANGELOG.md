@@ -6,6 +6,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-02
+
+### Fixed
+- **Hours that looked far too long** on Trends, Today and the timesheet. Sessions recorded by versions before 0.4.0
+  had no "active time", so they counted from the first to the last message, even when a session was left open all
+  day. Those sessions now use an estimate from how much Claude was used (never more than the span), and after
+  updating, Worklog **re-reads the last 30 days once** in the background so they get real active time.
+  **Settings → Older days → Re-read the last 30 days** does it again on demand.
+- Search missed results that Claude found. It now matches other word endings ("reviewed" for "review"), forgives
+  typos ("setlement", "fixx"), understands "pull request" for "PR", always looks in your prompts for the last 60
+  days, ranks results by how many of your words they contain, highlights the words, and shows the same note on many
+  days as one result with the other days listed.
+- Claude's answers showed raw `**stars**` and dashes. They now appear as tidy paragraphs and lists, with bold,
+  code and dates that link to the day.
+
+### Added
+- **Ask Claude checkbox** next to the search box (when AI is on). Ticked, pressing Search always asks Claude and
+  opens the written answer at the top of the Ask page. Unticked, it searches on your computer as before. The choice
+  is remembered.
+- **New share card.** Pick **Today, Yesterday, This week, Last week, This month, Last month or This year** (or any
+  other day, week or month), in **Wide** (X, LinkedIn) or **Square** (Instagram) size. The card has a bright
+  gradient, a big hours number, a bar chart of the period with the best day highlighted, and your streak. It looks
+  complete even when nothing is tagged.
+- **Copy text** now gives a ready-to-post text, one fact per line, shown under the card before you copy it.
+
 ## [0.5.0] - 2026-11-02
 
 ### Added
@@ -193,7 +218,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.3.2...v0.4.0
