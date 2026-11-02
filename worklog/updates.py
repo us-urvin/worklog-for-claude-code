@@ -166,6 +166,19 @@ def upgrade(timeout: int = 300) -> tuple[bool, str]:
     return True, "Updated."
 
 
+def version_on_disk() -> str | None:
+    """The version in the installed package's files right now: cheap (one small file read, no new process).
+
+    Differs from the running __version__ after `pipx upgrade` while the server keeps running.
+    """
+    try:
+        text = (Path(__file__).with_name("__init__.py")).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
+    return m.group(1) if m else None
+
+
 def installed_version() -> str:
     """The version now on disk (after an upgrade it differs from the running __version__)."""
     try:

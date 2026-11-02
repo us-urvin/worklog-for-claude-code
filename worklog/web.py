@@ -81,7 +81,7 @@ class Jobs:
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._state = {"running": None, "finished": None, "message": "", "ok": True}
+        self._state = {"running": None, "finished": None, "finished_at": 0.0, "message": "", "ok": True}
 
     def start(self, name: str, fn) -> bool:
         with self._lock:
@@ -96,7 +96,8 @@ class Jobs:
                 log.exception("%s failed", name)
                 msg, ok = f"{name} failed: {exc}", False
             with self._lock:
-                self._state.update(running=None, finished=datetime.now().strftime("%H:%M"), message=msg, ok=ok)
+                self._state.update(running=None, finished=datetime.now().strftime("%H:%M"), finished_at=time.time(),
+                                   message=msg, ok=ok)
 
         threading.Thread(target=run, daemon=True).start()
         return True
@@ -104,6 +105,16 @@ class Jobs:
     def snapshot(self) -> dict:
         with self._lock:
             return dict(self._state)
+
+    def dismiss(self) -> None:
+        """Hide the last result (the ✕ on its banner)."""
+        with self._lock:
+            if not self._state["running"]:
+                self._state.update(message="", finished=None, finished_at=0.0)
+
+
+# How long a finished job's message stays on the pages (errors longer, so they aren't missed).
+RESULT_SECONDS, ERROR_SECONDS = 120, 900
 
 
 # ================================================================== helpers
@@ -289,6 +300,8 @@ background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);
 button.danger-solid{background:#C2334B;color:#fff;box-shadow:none}
 #forget,#logins,#checklist,#add,#data-repo{scroll-margin-top:96px}
 #data-repo .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
+.banner.closable{display:flex;align-items:center;gap:12px}.banner.closable>span{flex:1}
+.banner .close{margin:0}.banner .close button{padding:4px 10px}
 .notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
@@ -417,22 +430,33 @@ LOGO = ('<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="l
         '<rect x="21" y="7" width="4" height="18" rx="2" fill="#0B0F24"/></svg>')
 
 
+def _result_visible(job: dict) -> bool:
+    """A finished job's message shows for a little while, then goes away by itself."""
+    if str(job.get("message", "")).startswith("Updated to"):
+        return True  # the page is waiting for the restart
+    age = time.time() - float(job.get("finished_at") or 0)
+    return age < (RESULT_SECONDS if job.get("ok") else ERROR_SECONDS)
+
+
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None,
-           extra: str = "", fun: bool = False) -> str:
+           extra: str = "", fun: bool = False, csrf: str = "") -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
                                   ("settings", "/settings", "Settings")))
     banners = ""
     if job.get("running"):
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
-    elif job.get("message") and job.get("finished"):
+    elif job.get("message") and job.get("finished") and _result_visible(job):
         cls = "ok" if job.get("ok") else "bad"
         cheer = (f' data-celebrate="summaries:{e(job["finished"])}|Summaries are ready ✍️"'
                  if job.get("ok") and str(job["message"]).startswith("Summaries written") else "")
         if job.get("ok") and str(job["message"]).startswith("Updated to"):  # reload once the new version answers
             cheer += f' id="restarting" data-version="{e(__version__)}"'
-        banners += (f'<div class="banner {cls}" role="status"{cheer}>{e(job["message"])} '
-                    f'<span class="muted">({e(job["finished"])})</span></div>')
+        close = (f'<form method="post" action="/jobs/dismiss" class="close">'
+                 f'<input type="hidden" name="csrf" value="{e(csrf)}"><button class="quiet" aria-label="Close">✕</button>'
+                 f'</form>' if csrf else "")
+        banners += (f'<div class="banner {cls} closable" role="status"{cheer}><span>{e(job["message"])} '
+                    f'<span class="muted">({e(job["finished"])})</span></span>{close}</div>')
     if ok in OK_MESSAGES:
         banners += f'<div class="banner ok" role="status">{e(OK_MESSAGES[ok])}</div>'
     if error:
@@ -877,9 +901,20 @@ def _update_html(app: App, cfg: Config) -> str:
             f'value="update:{e(new)}"><button class="quiet" aria-label="Dismiss">✕</button></form></span></div>')
 
 
+def _restart_html(app: App) -> str:
+    """Upgraded with pipx/pip while this server kept running: offer to switch to the new version."""
+    disk = updates.version_on_disk()
+    if services.demo_mode() or not disk or disk == __version__ or app.jobs.snapshot().get("running"):
+        return ""
+    return (f'<div class="notice update" role="status"><span class="ico" aria-hidden="true">🔄</span>'
+            f'<span class="txt"><b>Worklog {e(disk)} is installed</b>, but this page still runs {e(__version__)}. '
+            f'Restart to use the new version.</span><span class="acts"><form method="post" action="/restart">'
+            f'<input type="hidden" name="csrf" value="{app.csrf}"><button>Restart now</button></form></span></div>')
+
+
 def top_panels(app: App, cfg: Config, active: str = "") -> str:
     """Shown under the header on every page: the setup checklist (until done) and watcher notices."""
-    out = _update_html(app, cfg)
+    out = _restart_html(app) + _update_html(app, cfg)
     just = updates.pop_updated()
     if just:
         out = (f'<div class="banner ok" role="status" data-celebrate="updated:{e(just)}|Worklog {e(just)} is here 🎉">'
@@ -1231,6 +1266,11 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/jobs/dismiss":
+            self.jobs.dismiss()
+            return "/", None, form
+        if path == "/restart":
+            return self._restart_after_update(form)
         if path == "/sync/test":
             def job():
                 ok, msg = syncstatus.test_connection(cfg)
@@ -1391,6 +1431,18 @@ class App:
         started = self.jobs.start("Updating Worklog", job)
         return ("/?ok=job" if started else "/"), None, form
 
+    def _restart_after_update(self, form: dict):
+        """Worklog was upgraded from a terminal: restart this server on the new code (the page reloads itself)."""
+        disk = updates.version_on_disk()
+        if services.demo_mode() or not disk or disk == __version__:
+            return "/", None, form
+
+        def job():
+            threading.Timer(1.5, self.restart).start()
+            return f"Updated to {disk}. Restarting…"
+        self.jobs.start("Restarting", job)
+        return "/?ok=job", None, form
+
     def restart(self) -> None:
         updates.restart_server(self.port, self.close)
 
@@ -1547,7 +1599,8 @@ def make_handler(app: App):
             nonce = secrets.token_urlsafe(16)
             cfg = _try_config() if title != "Set up" else None
             extra = top_panels(app, cfg, active) if cfg else ""
-            page = layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra, fun=bool(cfg and cfg.fun))
+            page = layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra, fun=bool(cfg and cfg.fun),
+                          csrf=app.csrf)
             self._send(status, page, nonce=nonce)
 
         # ---------------------------------------------------------- GET

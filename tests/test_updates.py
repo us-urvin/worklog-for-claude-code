@@ -110,3 +110,56 @@ def test_updated_message_is_shown_once_and_only_by_the_new_version(ustate):
     assert updates.pop_updated("0.3.0") is None  # the old process, just before it restarts
     assert updates.pop_updated("9.9.9") == "9.9.9"  # the new one
     assert updates.pop_updated("9.9.9") is None  # only once
+
+
+def _job(message, ok=True, age=0.0):
+    return {"running": None, "finished": "11:21", "finished_at": time.time() - age, "message": message, "ok": ok}
+
+
+def test_job_results_go_away_by_themselves_and_can_be_closed():
+    page = web.layout("t", "", "day", "n", _job("Updated 178 session record(s)"), csrf="tok")
+    assert "Updated 178 session record(s)" in page and 'action="/jobs/dismiss"' in page
+    assert "Updated 178" not in web.layout("t", "", "day", "n", _job("Updated 178 session record(s)", age=121))
+    failed = _job("Syncing failed: offline", ok=False, age=300)
+    assert "Syncing failed" in web.layout("t", "", "day", "n", failed)  # errors stay longer
+    assert "Syncing failed" not in web.layout("t", "", "day", "n", _job("Syncing failed", ok=False, age=901))
+    restarting = _job("Updated to 9.9.9. Restarting…", age=600)
+    assert 'id="restarting"' in web.layout("t", "", "day", "n", restarting)  # never hidden while restarting
+
+
+def test_dismiss_clears_the_last_result(ustate, repo, monkeypatch):
+    cfg = make_cfg(ustate, repo)
+    monkeypatch.setattr(web, "_try_config", lambda: cfg)
+    app = web.App(1)
+    app.jobs.start("Syncing", lambda: "Synced: 3 records")
+    for _ in range(100):
+        if not app.jobs.snapshot()["running"]:
+            break
+        time.sleep(0.02)
+    assert app.jobs.snapshot()["message"] == "Synced: 3 records"
+    app.post("/jobs/dismiss", {})
+    assert app.jobs.snapshot()["message"] == ""
+
+
+def test_version_on_disk_reads_the_installed_files():
+    assert updates.version_on_disk() == __version__
+
+
+def test_restart_banner_after_a_terminal_upgrade(ustate, repo, monkeypatch):
+    cfg = make_cfg(ustate, repo)
+    monkeypatch.setattr(web, "_try_config", lambda: cfg)
+    app = web.App(1)
+    assert web._restart_html(app) == ""  # same version on disk: nothing to do
+    monkeypatch.setattr(updates, "version_on_disk", lambda: "9.9.9")
+    html = web._restart_html(app)
+    assert "Worklog 9.9.9 is installed" in html and f"still runs {__version__}" in html and 'action="/restart"' in html
+    restarted = []
+    monkeypatch.setattr(app, "restart", lambda: restarted.append(True))
+    monkeypatch.setattr(web.threading, "Timer", lambda delay, fn: type("T", (), {"start": lambda s: fn()})())
+    loc, err, _ = app.post("/restart", {})
+    assert err is None and loc == "/?ok=job"
+    for _ in range(100):
+        if not app.jobs.snapshot()["running"]:
+            break
+        time.sleep(0.02)
+    assert app.jobs.snapshot()["message"] == "Updated to 9.9.9. Restarting…" and restarted == [True]
