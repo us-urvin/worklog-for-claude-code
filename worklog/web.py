@@ -405,6 +405,27 @@ border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;ani
 .pill.tag{color:var(--accent-2);border-color:color-mix(in srgb,var(--accent-2) 45%,transparent)}
 a.btn.edit{padding:5px 12px;font-size:.82rem}
 .para{margin:8px 0 6px;max-width:72ch;font-size:1rem}.entry details{margin-top:6px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.askbox{display:flex;gap:8px;margin:0 0 18px}.askbox input{max-width:none;flex:1}.askbox.compact{margin:14px 0 18px}
+.leaveoff h2{font-size:1rem;margin:0 0 10px}.leaves{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:22px}
+@media (max-width:820px){.leaves{grid-template-columns:1fr}}
+a.leave{display:block;padding:14px 16px;border-radius:16px;background:var(--glass);border:1px solid var(--rule);color:var(--ink);
+text-decoration:none;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:border-color .2s,transform .2s}
+a.leave:hover{border-color:var(--accent);transform:translateY(-2px)}.leave .lh{display:flex;gap:8px;align-items:baseline}
+.leave .lh .muted{margin-left:auto;font-size:.82rem}.leave .ld{font-size:.9rem;margin:6px 0;color:var(--muted)}
+.leave .lt{list-style:none;padding:0;margin:6px 0 0;font-size:.85rem}.leave .lb{font-size:.8rem}.leave .refs{margin:6px 0 0}
+.delta{display:inline-block;font-size:.8rem;font-weight:700;margin-top:4px;color:var(--muted)}.delta.up{color:var(--ok)}.delta.down{color:var(--bad)}
+ul.said{margin:0;padding-left:1.2em}ul.said li{margin:6px 0}
+svg.cols{width:100%;height:auto;max-height:220px;display:block}svg.cols .bar{fill:color-mix(in srgb,var(--accent) 55%,transparent);
+transform-box:fill-box;transform-origin:50% 100%;animation:grow .7s cubic-bezier(.2,.9,.3,1.15) both}
+svg.cols .bar.hl{fill:var(--accent-2)}svg.cols a:hover .bar{fill:var(--accent)}
+svg.cols text{font:600 9px/1 system-ui,sans-serif;fill:var(--muted)}svg.cols .v{fill:var(--ink)}
+ul.badges{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.badge{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:14px;border:1px dashed var(--rule);opacity:.55}
+.badge.on{opacity:1;border-style:solid;border-color:color-mix(in srgb,var(--accent) 45%,var(--rule));background:var(--glass-hi)}
+.badge .be{font-size:1.5rem}.badge .muted{font-size:.8rem}
+ul.hits,ul.answers{list-style:none;margin:0;padding:0}ul.hits li,ul.answers li{padding:10px 0;border-bottom:1px solid var(--rule)}
+ul.hits li:last-child,ul.answers li:last-child{border-bottom:0}.answer{margin:6px 0;max-width:72ch}
 .refs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}.ref{font-size:.78rem;font-weight:700;padding:2px 9px;border-radius:8px;
 border:1px solid color-mix(in srgb,var(--accent-2) 45%,var(--rule));color:var(--accent-2);background:var(--glass-hi);text-decoration:none;
 font-family:"JetBrains Mono","Ubuntu Mono",monospace}a.ref:hover{border-color:var(--accent-2)}
@@ -583,8 +604,9 @@ def _result_visible(job: dict) -> bool:
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None,
            extra: str = "", fun: bool = False, csrf: str = "") -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
-                  for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
-                                  ("timesheet", "/timesheet", "Timesheet"), ("settings", "/settings", "Settings")))
+                  for k, h, t in (("day", "/", "Today"), ("trends", "/trends", "Trends"),
+                                  ("timesheet", "/timesheet", "Timesheet"), ("sources", "/sources", "Sources"),
+                                  ("settings", "/settings", "Settings")))
     banners = ""
     if job.get("running"):
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
@@ -834,6 +856,194 @@ def _edit_form(app: App, day: date, p, projects: dict, known: dict[str, str], ov
 <div class="row"><button>Save</button><a class="btn quiet" href="/?d={day.isoformat()}">Cancel</a>
 <button class="quiet" name="reset" value="1" formnovalidate>Undo my changes</button></div>
 </form></section>"""
+
+
+def _ask_box(q: str = "", compact: bool = False) -> str:
+    """A question box. Search runs here at once; "Ask Claude" uses your account (on the Ask page)."""
+    return (f'<form method="get" action="/ask" class="askbox{" compact" if compact else ""}" role="search">'
+            f'<label for="askq" class="sr">Ask your worklog</label>'
+            f'<input type="text" id="askq" name="q" value="{e(q)}" maxlength="500" required '
+            f'placeholder="Ask your worklog… e.g. When did I review PR 505?">'
+            f'<button>Search</button></form>')
+
+
+def _leave_off_html(items: list[dict], cfg: Config) -> str:
+    if not items:
+        return ""
+    cards = []
+    today = date.today()
+    for it in items:
+        when = ("today" if it["day"] == today else "yesterday" if it["day"] == today - timedelta(days=1)
+                else f'{it["day"]:%a %d %b}') + (f' {it["last"]}' if it.get("last") else "")
+        doing = it.get("line") if it.get("summarized") else it.get("last_prompt") or it.get("line")
+        refs = "".join(
+            (f'<a class="ref" href="{e(u)}" target="_blank" rel="noopener noreferrer">{e(r)}</a>'
+             if (u := ref_url(r, _remote_of(it["key"]), cfg.tracker_url)) else f'<span class="ref">{e(r)}</span>')
+            for r in (it.get("refs") or [])[:4])
+        todo = "".join(f"<li>⬜ {e(t)}</li>" for t in (it.get("open") or [])[:3])
+        branch = next((b for b in it.get("branches") or [] if b not in ("main", "master")), "")
+        cards.append(f'<a class="leave" href="/?d={it["day"].isoformat()}"><div class="lh"><b>{e(it["name"])}</b>'
+                     f'<span class="muted">{e(when)}</span></div><div class="ld">{e(doing or "")}</div>'
+                     + (f'<div class="refs">{refs}</div>' if refs else "")
+                     + (f'<div class="muted lb">branch <code>{e(branch)}</code></div>' if branch else "")
+                     + (f'<ul class="lt">{todo}</ul>' if todo else "") + "</a>")
+    return (f'<section class="leaveoff" aria-label="Where you left off"><h2>Where you left off</h2>'
+            f'<div class="leaves">{"".join(cards)}</div></section>')
+
+
+def _remote_of(key: str) -> dict | None:
+    if "/" in key and ":" not in key.split("/", 1)[0]:
+        host, slug = key.split("/", 1)
+        return {"host": host, "slug": slug}
+    return None
+
+
+def _delta(now: float, before: float) -> str:
+    if not before:
+        return ""
+    pct = round(100 * (now - before) / before)
+    cls = "up" if pct > 0 else "down" if pct < 0 else ""
+    return f'<span class="delta {cls}">{"+" if pct > 0 else ""}{pct}%</span>' if pct else '<span class="delta">=</span>'
+
+
+def page_trends(app: App, cfg: Config, q: dict) -> str:
+    """Weeks and months compared, in numbers and a few plain sentences (all worked out on this computer)."""
+    from . import cost, insights
+    store = _store(cfg)
+    if store is None:
+        return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
+    view = "month" if q.get("view") == "month" else "week"
+    today = date.today()
+    anchor = min(_parse_date(q.get("d")) or today, today)
+    cache = daycache.DayCache(store, cfg.time_mode)
+    if view == "week":
+        start = anchor - timedelta(days=anchor.weekday())
+        end, prev_start = start + timedelta(days=6), start - timedelta(days=7)
+        prev_end = start - timedelta(days=1)
+        series_start = start - timedelta(weeks=7)
+    else:
+        start = anchor.replace(day=1)
+        end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        prev_end = start - timedelta(days=1)
+        prev_start = prev_end.replace(day=1)
+        series_start = (start - timedelta(days=150)).replace(day=1)
+    entries = cache.days(series_start, min(end, today))
+    cache.save()
+    now = insights.period(entries, start, min(end, today), cfg.cost_custom)
+    before = insights.period(entries, prev_start, prev_end, cfg.cost_custom)
+    series = []
+    if view == "week":
+        for i in range(8):
+            ws = series_start + timedelta(weeks=i)
+            per = insights.period(entries, ws, min(ws + timedelta(days=6), today))
+            series.append((f"{ws:%d %b}", per.minutes, ws == start, f"/trends?d={ws.isoformat()}"))
+    else:
+        m = series_start
+        while m <= start:
+            nxt = (m + timedelta(days=32)).replace(day=1)
+            per = insights.period(entries, m, min(nxt - timedelta(days=1), today))
+            series.append((f"{m:%b}", per.minutes, m == start, f"/trends?view=month&d={m.isoformat()}"))
+            m = nxt
+    word = "week" if view == "week" else "month"
+    tiles = [("Hours", _dur(now.minutes), _delta(now.minutes, before.minutes)),
+             ("Sessions", str(now.sessions), _delta(now.sessions, before.sessions)),
+             ("Tokens", _short(now.tokens), _delta(now.tokens, before.tokens)),
+             ("At API prices", "≈ " + cost.money(now.dollars), _delta(now.dollars, before.dollars))]
+    tiles_html = "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{e(v)}</div>{d}</div>'
+                         for k, v, d in tiles)
+    lines = "".join(f"<li>{e(x)}</li>" for x in insights.sentences(now, before, word))
+    extra = []
+    if now.refs:
+        extra.append(f'{len(now.refs)} pull request{"s" * (len(now.refs) != 1)} and tickets')
+    if now.tests_runs:
+        extra.append(f"{now.tests_runs} test runs, {now.tests_fixed} fixed")
+    if now.claude and now.minutes:
+        extra.append(f"Claude worked {_dur(min(now.claude, now.minutes))}, you {_dur(max(0, now.minutes - now.claude))}")
+    prev_link = (start - timedelta(days=1)).isoformat()
+    next_d = end + timedelta(days=1)
+    nav = (f'<div class="arrows"><a class="btn quiet" href="/trends?view={view}&d={prev_link}" aria-label="Earlier">‹</a>'
+           + (f'<a class="btn quiet" href="/trends?view={view}&d={next_d.isoformat()}" aria-label="Later">›</a>'
+              if next_d <= today else "")
+           + f'<a class="btn quiet" href="/trends?view={"month" if view == "week" else "week"}&d={anchor.isoformat()}">'
+             f'{"Months" if view == "week" else "Weeks"}</a></div>')
+    head = (f'<div class="daynav"><h1><span class="grad">Trends</span><small>{e(now.label)}'
+            f'{" · this " + word if start <= today <= end else ""}</small></h1>{nav}</div>')
+    tags = viz.project_bars(list(now.tags.items())) or '<p class="muted">Tags appear once summaries are written.</p>'
+    projects = viz.project_bars(list(now.projects.items())) or '<p class="muted">No time recorded.</p>'
+    year = today.year if anchor.year == today.year else anchor.year
+    badges_html = _badges_html(insights.badges(cache.days(today - timedelta(days=399), today)), cfg) if cfg.fun else ""
+    cache.save()
+    return (head + _ask_box(compact=True)
+            + f'<div class="tiles">{tiles_html}</div>'
+            + f'<div class="strip"><div class="legend"><span>Hours per {word}</span></div>{viz.column_bars(series)}</div>'
+            + f'<section class="block"><h2>In short</h2><ul class="said">{lines}</ul>'
+            + (f'<p class="muted">{e(" · ".join(extra))}</p>' if extra else "") + "</section>"
+            + '<div class="insights">'
+            + f'<div class="panel"><h2>When you worked</h2>{viz.clock([min(60, h // max(1, now.days_active)) for h in now.hours])}</div>'
+            + f'<div class="panel"><h2>Projects</h2>{projects}</div>'
+            + f'<div class="panel"><h2>Kind of work</h2>{tags}</div></div>'
+            + badges_html
+            + f'<p class="row"><a class="btn quiet" href="/year?y={year}">Your {year} in review</a>'
+              f'<a class="btn quiet" href="/share?what={word}&d={anchor.isoformat()}">Share this {word}</a></p>')
+
+
+def _badges_html(items: list[dict], cfg: Config) -> str:
+    got = [b for b in items if b["earned"]]
+    cells = "".join(
+        f'<li class="badge{" on" if b["earned"] else ""}" title="{e(b["desc"])}"'
+        + (f' data-badge="{e(b["id"])}|{e(b["name"])}"' if b["earned"] else "")
+        + f'><span class="be" aria-hidden="true">{b["emoji"]}</span><b>{e(b["name"])}</b>'
+          f'<span class="muted">{e(b["desc"])}' + (f' · {b["earned"]:%d %b %Y}' if b["earned"] else "") + "</span></li>"
+        for b in items)
+    return (f'<section class="block" id="badges"><h2>Badges <span class="muted">{len(got)} of {len(items)}</span></h2>'
+            f'<ul class="badges">{cells}</ul></section>')
+
+
+def page_ask(app: App, cfg: Config, q: dict) -> str:
+    """Search results at once, plus "Ask Claude" for a written answer, and your recent answers."""
+    from . import ask
+    question = (q.get("q") or "").strip()[: ask.MAX_QUESTION]
+    store = _store(cfg)
+    if store is None:
+        return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
+    head = '<div class="daynav"><h1><span class="grad">Ask your worklog</span></h1></div>' + _ask_box(question)
+    body = ""
+    if question:
+        cache = daycache.DayCache(store, cfg.time_mode)
+        hits = ask.search(cache, question, date.today())
+        cache.save()
+        rows = "".join(
+            f'<li><a href="/?d={h["day"].isoformat()}"><b>{h["day"]:%a %d %b %Y}</b></a> · {e(h["project"])}'
+            + (f' <span class="pill tag">{e(h["tag"])}</span>' if h["tag"] else "")
+            + f' <span class="muted">{_dur(h["minutes"])}</span><div>{e(h["line"])}</div>'
+              f'<div class="muted" style="font-size:.8rem">found in: {e(h["why"])}</div></li>' for h in hits)
+        body += (f'<section class="block"><h2>Found {len(hits)} match{"es" * (len(hits) != 1)}</h2>'
+                 + (f'<ul class="hits">{rows}</ul>' if rows else
+                    '<p class="muted">Nothing matched. Try other words, a project name or a PR number.</p>'))
+        if cfg.use_ai:
+            busy = " disabled" if app.jobs.snapshot().get("running") else ""
+            body += (f'<form method="post" action="/ask" data-result="dialog" data-oktitle="Answer" '
+                     f'data-badtitle="No answer"><input type="hidden" name="csrf" value="{app.csrf}">'
+                     f'<input type="hidden" name="q" value="{e(question)}"><p class="help" style="margin-top:12px">'
+                     f'Want a written answer? Claude reads your saved notes for the days that matter (never your code), '
+                     f'with your own account.</p><button{busy}>Ask Claude</button></form>')
+        body += "</section>"
+    past = ask.history()
+    if past:
+        items = "".join(f'<li><b>{e(x["q"])}</b><div class="answer">{_linkify_days(e(x["a"]))}</div>'
+                        f'<div class="muted" style="font-size:.8rem">{e(x["at"][:16].replace("T", " "))}</div></li>'
+                        for x in past[:10])
+        body += f'<section class="block"><h2>Recent answers</h2><ul class="answers">{items}</ul></section>'
+    if not question and not past:
+        body += ('<section class="block"><h2>Try</h2><ul class="said">'
+                 + "".join(f'<li><a href="/ask?q={quote(x)}">{e(x)}</a></li>' for x in (
+                     "What did I do last week?", "When did I last work on a pull request?",
+                     "How many hours this month?", "Which tasks are still open?")) + "</ul></section>")
+    return head + body
+
+
+def _linkify_days(escaped: str) -> str:
+    return re.sub(r"\[(20\d\d-\d\d-\d\d)\]", r'<a href="/?d=\1">\1</a>', escaped).replace("\n", "<br>")
 
 
 RANGES = (("this-week", "This week"), ("last-week", "Last week"), ("this-month", "This month"),
@@ -1130,7 +1340,13 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
              f'including sub-agents. Usage, not a bill.</p></div></aside>')
     if not sessions:
         aside = ""  # chat-only day: no token tables to show
-    body = (head + edit_html + lede + _chart(chart_history, names, day, chat_counts) + actions + insights
+    leave = ""
+    if day == date.today():
+        from . import insights as _ins
+        leave = _leave_off_html(_ins.leave_off(cache.days(day - timedelta(days=13), day)), cfg)
+        cache.save()
+    body = (head + edit_html + _ask_box(compact=True) + leave + lede + _chart(chart_history, names, day, chat_counts)
+            + actions + insights
             + f'<div class="cols"><main><h2>What I worked on</h2>{"".join(entries)}</main>{aside}</div>' + party)
     return body, None
 
@@ -1777,6 +1993,8 @@ class App:
             return ("/settings?ok=job#data-repo" if started else "/settings#data-repo"), None, form
         if path == "/accounts/forget":
             return self._forget(cfg, form)
+        if path == "/ask":
+            return self._ask(cfg, form)
         if path == "/projects/edit":
             return self._project_edit(cfg, form)
         if path == "/projects/guess":
@@ -1973,6 +2191,29 @@ class App:
             return msg
         started = self.jobs.start("Forgetting a login", job)
         return ("/settings?ok=job#logins" if started else "/settings"), None, form
+
+    def _ask(self, cfg: Config, form: dict):
+        """Ask Claude about your saved notes, in the background (it takes a little while)."""
+        from . import ask
+        question = " ".join(form.get("q", "").split())[: ask.MAX_QUESTION]
+        store = _store(cfg)
+        if not question or store is None:
+            return None, "Type a question first.", form
+        if not cfg.use_ai:
+            return None, "AI is switched off in Settings → Summaries; the search above still works.", form
+
+        def job():
+            cache = daycache.DayCache(store, cfg.time_mode)
+            notes, _ = ask.context(cache, question, date.today())
+            cache.save()
+            try:
+                answer = ask.ask_claude(cfg, question, notes, date.today())
+            except RuntimeError as exc:
+                raise JobFailed(str(exc)) from None
+            ask.remember(question, answer)
+            return answer
+        started = self.jobs.start("Asking Claude", job)
+        return (f"/ask?q={quote(question)}&ok=job" if started else f"/ask?q={quote(question)}"), None, form
 
     def _day_projects(self, cfg: Config, form: dict):
         """(store, day, overrides, projects) for a correction posted from a day page, or an error message."""
@@ -2201,7 +2442,7 @@ def _parse_date(v: str | None) -> date | None:
 
 
 JOB_PATHS = {"/action/collect", "/action/report", "/sources/scan", "/sync/test", "/accounts/forget", "/update",
-             "/restart", "/timesheet/summaries"}
+             "/restart", "/timesheet/summaries", "/ask"}
 
 
 def _fetch_answer(app: App, path: str, location: str | None, error: str | None) -> dict:
@@ -2303,6 +2544,10 @@ def make_handler(app: App):
                 if url.path == "/settings":
                     forget_ref = q.get("forget") if re.fullmatch(r"[0-9a-f]{12}", q.get("forget", "")) else None
                     return self._page("Settings", page_settings(app, cfg, forget_ref), "settings", q.get("ok"))
+                if url.path == "/trends":
+                    return self._page("Trends", page_trends(app, cfg, q), "trends", q.get("ok"))
+                if url.path == "/ask":
+                    return self._page("Ask", page_ask(app, cfg, q), "trends", q.get("ok"))
                 if url.path == "/timesheet":
                     return self._page("Timesheet", page_timesheet(app, cfg, q), "timesheet", q.get("ok"))
                 if url.path == "/timesheet/export":
