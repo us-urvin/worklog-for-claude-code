@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, services, updates, viz, watcher
+from . import __version__, chats, checks, forget, services, updates, viz, watcher
 from .collector import collect, sanitize_remote
 from .config import (
     _NAME_RE,
@@ -284,6 +284,10 @@ ol.checks>li>details,ol.checks>li>span{min-width:0}.tips{margin-top:12px}
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .notice .ico{font-size:1.3rem}.notice .txt{flex:1 1 280px}.notice .acts{display:flex;gap:8px;align-items:center}
 .notice .acts form{margin:0}.notice.hook,.notice.apikey{border-color:color-mix(in srgb,var(--bad) 55%,var(--rule))}
+.danger-zone{border-color:color-mix(in srgb,var(--bad) 60%,var(--rule))!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--bad) 35%,transparent),var(--shadow)}
+.danger-zone h2{color:var(--bad)}.danger-zone ul{margin:6px 0 12px;padding-left:1.2em}.danger-zone li{margin:4px 0}
+button.danger-solid{background:#C2334B;color:#fff;box-shadow:none}
+#forget,#logins,#checklist,#add{scroll-margin-top:96px}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
 .notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
@@ -898,6 +902,45 @@ MODEL_CHOICES = (("", "Account default"), ("opus", "Opus (latest)"), ("sonnet", 
                  ("haiku", "Haiku (latest)"), ("fable", "Fable (latest)"))
 
 
+def _forget_link(login: dict) -> str:
+    return (f'<a class="btn quiet forget" href="/settings?forget={e(login["ref"])}#forget" '
+            f'title="Delete Worklog\'s history of this login">Forget…</a>')
+
+
+def _forget_confirm(app: App, cfg: Config, ref_: str) -> str:
+    """The "are you sure?" card: exactly what forgetting this login deletes, and what it doesn't."""
+    p = forget.plan(cfg, ref_)
+    if p is None:
+        return '<div class="banner bad" role="alert">That login is no longer recorded on this device.</div>'
+    days = sorted(p.days)
+    span = (f" from {len(days)} day{'s' * (len(days) != 1)} ({days[0]:%d %b %Y} – {days[-1]:%d %b %Y})"
+            if len(days) > 1 else f" from {days[0]:%d %b %Y}" if days else "")
+    lost = [f"<li><b>{len(p.files)} Claude Code session record{'s' * (len(p.files) != 1)}</b>{span}: what you worked "
+            f"on, prompts, tokens, files and commits</li>"]
+    if p.projects:
+        lost.append("<li>The saved summaries of the projects in those sessions (write them again with "
+                    "“Write summaries” on each day)</li>")
+    if p.account and not p.keep_account:
+        lost.append(f"<li>The account <b>{e(p.account)}</b>. Its other sessions (from logins without a name) move to "
+                    f"the folder&#39;s default account.</li>")
+    elif p.account:
+        lost.append(f"<li>The link between <b>{e(p.account)}</b> and this login (it&#39;s your only account, so it stays)</li>")
+    lost.append("<li>The login itself, from this list</li>")
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    return f"""<section class="block danger-zone" id="forget" role="alertdialog" aria-labelledby="forget-title">
+<h2 id="forget-title">Forget {e(p.label)}?</h2>
+<p><b>This permanently deletes Worklog&#39;s history of this login on this device.</b> You will lose:</p>
+<ul>{"".join(lost)}</ul>
+<p class="muted">Not touched: Claude Code&#39;s own files, your other accounts, and records synced from your other
+computers. The old versions stay in your data repo&#39;s git history. If this account logs in again later, its new
+sessions are tracked as usual.</p>
+<form method="post" action="/accounts/forget">{c}<input type="hidden" name="ref" value="{e(p.ref)}">
+<div class="check"><input type="checkbox" id="forget_ok" name="confirm" value="1" required>
+<label for="forget_ok">I understand this deletes the history above and can&#39;t be undone</label></div>
+<div class="row"><button class="danger-solid">Forget and delete</button><a class="btn quiet" href="/settings#logins">Cancel</a></div>
+</form></section>"""
+
+
 def _detected_section(cfg: Config, csrf_field: str) -> str:
     """Logins seen by the SessionStart hook. E-mails are masked; forms carry an opaque ref, never the id."""
     by_dir = cfg.accounts_by_dir()
@@ -918,7 +961,8 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             where = f'<span class="muted">folder <code>{e(home_relative(d))}</code> · last seen {e(seen)}</span>'
             if len(by_dir[d]) == 1 and per_dir[d] == 1:  # the only login in its own folder: nothing to tell apart
                 rows.append(f'<div class="acct"><h3>{e(mask_email(login["email"]))}</h3><div class="meta">'
-                            f'<span class="pill ok">Counted as {e(current.name)}</span>{where}</div></div>')
+                            f'<span class="pill ok">Counted as {e(current.name)}</span>{where}</div>'
+                            f'<div class="row" style="margin-top:8px">{_forget_link(login)}</div></div>')
                 continue
             status = (f'<span class="pill ok">Counted as {e(current.name)}</span>' if linked
                       else f'<span class="pill bad">No name yet</span> <span class="muted">counted as {e(current.name)} '
@@ -933,7 +977,8 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
                 f'<label for="{list_id}-in" class="muted" style="margin:0">Account name</label>'
                 f'<input type="text" id="{list_id}-in" name="name" list="{list_id}" value="{e(current.name) if linked else ""}" '
                 f'placeholder="work" required pattern="{NAME_PATTERN}" style="width:auto"><datalist id="{list_id}">{names}</datalist>'
-                f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button></form></div>')
+                f'<button class="{"quiet" if linked else ""}">{"Rename" if linked else "Name this login"}</button>'
+                f'{_forget_link(login)}</form></div>')
     body = "".join(rows) or ('<div class="empty">No logins recorded yet. Install the hook, then start a Claude Code '
                              'session. Each account you log in with appears here.</div>')
     return (f'<h3 id="logins" style="margin-top:22px">Logins seen on this device</h3><p class="help" style="margin-top:6px">Each account '
@@ -943,7 +988,7 @@ def _detected_section(cfg: Config, csrf_field: str) -> str:
             f'device.</p>{body}')
 
 
-def page_settings(app: App, cfg: Config) -> str:
+def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
     store = _store(cfg)
     if store:
@@ -1001,7 +1046,8 @@ def page_settings(app: App, cfg: Config) -> str:
     running = app.watcher is not None and app.watcher.running
     watch_state = ('<span class="state-ok">Watching now.</span>' if running else
                    '<span class="muted">Not watching in this window (it runs in the background service).</span>')
-    return f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
+    confirm = _forget_confirm(app, cfg, forget_ref) if forget_ref else ""
+    return confirm + f"""<h1><span class="grad">Settings</span><small>Device {e(cfg.device)}</small></h1>
 <section class="block" style="margin-top:24px"><h2>Claude accounts</h2>
 <p class="help">Worklog counts every Claude Code session under one of these accounts. Pick the setup that matches how you use Claude Code:</p>
 <div class="setups"><div><b>Each account in its own folder</b>You start one account with plain <code>claude</code> and another with
@@ -1112,6 +1158,8 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/accounts/forget":
+            return self._forget(cfg, form)
         if path == "/accounts/add-folder":
             return self._account_add_folder(cfg, form)
         if path == "/notices/dismiss":
@@ -1264,6 +1312,22 @@ class App:
 
     def restart(self) -> None:
         updates.restart_server(self.port, self.close)
+
+    def _forget(self, cfg: Config, form: dict):
+        """Delete a login's history after the user ticked "I understand" on the confirmation card."""
+        ref_ = form.get("ref", "")
+        if form.get("confirm") != "1":
+            return None, "Tick “I understand” to confirm.", form
+        p = forget.plan(cfg, ref_)
+        if p is None:
+            return None, "That login is no longer recorded on this device.", form
+
+        def job():
+            msg = forget.apply(cfg, p)
+            checks.forget_cache()
+            return msg
+        started = self.jobs.start("Forgetting a login", job)
+        return ("/settings?ok=job#logins" if started else "/settings"), None, form
 
     def _account_add_folder(self, cfg: Config, form: dict):
         """Add a folder the watcher found: pick a free name from the folder, then install its hook."""
@@ -1425,7 +1489,8 @@ def make_handler(app: App):
                     body, err = page_day(app, cfg, day)
                     return self._page(f"{day:%d %b %Y}", body, "day", q.get("ok"), err)
                 if url.path == "/settings":
-                    return self._page("Settings", page_settings(app, cfg), "settings", q.get("ok"))
+                    forget_ref = q.get("forget") if re.fullmatch(r"[0-9a-f]{12}", q.get("forget", "")) else None
+                    return self._page("Settings", page_settings(app, cfg, forget_ref), "settings", q.get("ok"))
                 if url.path == "/sources":
                     return self._page("Sources", page_sources(app, cfg), "sources", q.get("ok"))
                 return self._send(404, "Not found", "text/plain")

@@ -116,6 +116,7 @@ match_account_id = "…"       # or: match_email = "you@example.com"
 - Sessions match by account id, then e-mail (case-insensitive). Anything else, including sessions from before the hook was installed, goes to the folder's **default** account (the one without `match_*`).
 - Naming (or renaming) a login moves its sessions from the last 30 days to that account straight away. Days whose Claude Code logs are already deleted keep the old account. Only hook-recorded sessions are moved.
 - A login that is the only one ever seen in its own folder needs no name: it is simply counted as that folder's account.
+- **Forget a login** you don't want: click **Forget…** next to it. A confirmation lists exactly what goes: Worklog's records of that login's sessions on this device (found through the hook and the account watcher), the saved summaries of those projects, the account linked only to that login (its other sessions move to the folder's default account), and the login itself. Nothing happens until you tick "I understand". Claude Code's own files are never touched, records synced from other computers stay, and the old versions remain in the data repo's git history. Forgotten sessions are never collected again; if that account logs in later, its new sessions are tracked as usual.
 - Tracking is per session. If you `/login` to another account *inside* a running session, the session stays with the account it started with. Start a new session after switching.
 - Summaries run `claude -p` with whichever account is logged in to the summarizer account's folder.
 

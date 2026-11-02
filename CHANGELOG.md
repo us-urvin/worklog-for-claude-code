@@ -6,6 +6,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- **Forget a login** (Settings → Logins seen on this device → Forget…): deletes Worklog's records of that login's
+  sessions on this device, the saved summaries of those projects, and the account linked only to that login, after a
+  confirmation that lists exactly what will be lost. Forgotten sessions are never collected again; Claude Code's own
+  files are never touched.
+
 ## [0.3.0] - 2026-10-29
 
 Everything since 0.2.0 (0.2.1 was never released on its own).
