@@ -427,6 +427,11 @@ a.seg.on{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:
 .sharebar{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:flex-start}.sharebar .segs{margin:0}
 pre.post{white-space:pre-wrap;font:inherit;font-size:.95rem;line-height:1.6;background:var(--field);border:1px solid var(--rule);
 border-radius:14px;padding:14px 16px;margin:8px 0}details.custom-period{margin:0 0 16px}
+a.btn.social{color:#fff;border:0;display:inline-flex;align-items:center;gap:8px;font-weight:700}a.btn.social b{font-size:1.05em}
+a.btn.social.li{background:#0A66C2}a.btn.social.x{background:#0F1419;box-shadow:inset 0 0 0 1px #3A4250}
+a.btn.social:hover{filter:brightness(1.15)}.sharehelp{font-size:.85rem;margin:8px 0 0}.showlbl{align-self:center;font-size:.85rem}
+kbd{font:600 .8em ui-monospace,monospace;padding:1px 6px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:6px}
+.flash.tip{border-color:var(--accent)}.flash a.btn{margin-left:10px}
 .goals{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 18px}.goal{display:flex;gap:12px;align-items:center;padding:10px 14px;
 border-radius:16px;background:var(--glass);border:1px solid var(--rule)}.goal.bad{border-color:var(--bad)}
 .gring{width:52px;height:52px}.gring .track{fill:none;stroke:var(--glass-hi);stroke-width:4}
@@ -543,12 +548,28 @@ W.wait().then(function(s){fetch('/jobs/dismiss',{method:'POST',headers:{'X-Workl
 body:'csrf='+encodeURIComponent(box.dataset.csrf)}).catch(function(){});
 if(s.ok===false){btn.disabled=false;var f=document.getElementById('flash');if(f)f.remove();W.flash(s.message||'No answer.','bad');return}
 location.href='/ask?q='+encodeURIComponent(q)+'#answer'})}).catch(function(){btn.disabled=false;W.flash('Worklog didn’t answer.','bad')})})})();
-(function(){var b=document.getElementById('sharepng'),img=document.getElementById('sharecard');if(!b||!img)return;
-b.addEventListener('click',function(){var c=document.createElement('canvas'),W=+b.dataset.w||1200,H=+b.dataset.h||630;
-c.width=W;c.height=H;var draw=function(){c.getContext('2d').drawImage(img,0,0,W,H);c.toBlob(function(blob){if(!blob){location.href=img.src;return}
-var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=b.dataset.name||'worklog.png';document.body.appendChild(a);
-a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)},'image/png')};
-if(img.complete){draw()}else{img.addEventListener('load',draw,{once:true})}})})();
+(function(){var bar=document.querySelector('.sharebtns'),img=document.getElementById('sharecard');if(!bar||!img)return;
+var mac=/Mac|iPhone|iPad/.test(navigator.platform||''),name=bar.dataset.name||'worklog.png',
+text=(document.querySelector('pre.post')||{}).textContent||'';
+function png(){return new Promise(function(ok,no){var c=document.createElement('canvas'),Wd=+bar.dataset.w||1200,H=+bar.dataset.h||630;
+c.width=Wd;c.height=H;var draw=function(){try{c.getContext('2d').drawImage(img,0,0,Wd,H);c.toBlob(function(b){b?ok(b):no()},'image/png')}catch(e){no(e)}};
+if(img.complete&&img.naturalWidth){draw()}else{img.addEventListener('load',draw,{once:true});img.addEventListener('error',no,{once:true})}})}
+function save(blob){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);
+a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1000)}
+document.getElementById('sharepng').addEventListener('click',function(){png().then(save,function(){location.href=img.src})});
+var more=document.getElementById('sharemore');
+try{if(navigator.canShare&&navigator.canShare({files:[new File([''],name,{type:'image/png'})]})){more.hidden=false}}catch(e){}
+more.addEventListener('click',function(){png().then(function(b){return navigator.share({files:[new File([b],name,{type:'image/png'})],text:text})})
+.catch(function(e){if(!e||e.name!=='AbortError')W.flash('Sharing didn’t work here. Use Download PNG instead.','bad')})});
+bar.querySelectorAll('a[data-share]').forEach(function(a){a.addEventListener('click',function(ev){ev.preventDefault();
+var site=a.dataset.share,go=function(msg,tone){var w=window.open(a.href,'_blank');if(w){try{w.opener=null}catch(e){}}
+var f=W.flash(msg,tone);if(!w){var l=document.createElement('a');l.href=a.href;l.target='_blank';l.rel='noopener noreferrer';
+l.textContent='Open '+site;l.className='btn';f.insertBefore(l,f.lastChild)}};
+var copied=(window.ClipboardItem&&navigator.clipboard&&navigator.clipboard.write)?
+navigator.clipboard.write([new ClipboardItem({'image/png':png()})]):Promise.reject();
+copied.then(function(){go('📋 Card copied. In the '+site+' post, press '+(mac?'⌘V':'Ctrl+V')+' to add the picture.','tip')},
+function(){png().then(function(b){save(b);go('⬇ Card saved to your downloads. In the '+site+' post, click the picture button to add it.','tip')},
+function(){go('Add the card with Download PNG, then attach it in the post.','bad')})})})})})();
 (function(){var r=document.getElementById('ts-range');if(!r)return;function sync(){document.querySelectorAll('.tsform .custom')
 .forEach(function(x){x.hidden=r.value!=='custom'})}r.addEventListener('change',sync);sync()})();
 (function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
@@ -1174,10 +1195,11 @@ def page_share(app: App, cfg: Config, q: dict) -> str:
     if store is None:
         return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
     what, start, end, p, streak, names, size, series, rng = _share_period(cfg, store, q)
+    tags = q.get("tags") != "0"
     title, sub = share.titles(what, start, end)
 
     def link(**over) -> str:
-        base = {"range": rng, "size": size, "names": "1" if names else ""}
+        base = {"range": rng, "size": size, "names": "1" if names else "", "tags": "" if tags else "0"}
         if not rng:
             base.update(what=what, d=start.isoformat())
         base.update(over)
@@ -1188,11 +1210,17 @@ def page_share(app: App, cfg: Config, q: dict) -> str:
     presets = "".join(f'<a class="seg{" on" if v == rng else ""}" href="{e(link(range=v))}">{n}</a>' for v, n in SHARE_RANGES)
     sizes = "".join(f'<a class="seg{" on" if v == size else ""}" href="{e(link(size=v))}">{n}</a>'
                     for v, n in (("wide", "Wide · X, LinkedIn"), ("square", "Square · Instagram")))
-    names_link = link(names="" if names else "1")
+    switches = "".join(
+        f'<a class="seg{" on" if on else ""}" role="switch" aria-checked="{"true" if on else "false"}" '
+        f'href="{e(href)}">{"✓" if on else "○"} {label}</a>'
+        for label, on, href in (("Kind of work", tags, link(tags="0" if tags else "")),
+                                ("Project names", names, link(names="" if names else "1"))))
     params = urlencode({k: v for k, v in {"what": what, "d": start.isoformat(), "size": size,
-                                          "names": "1" if names else ""}.items() if v})
+                                          "names": "1" if names else "", "tags": "" if tags else "0"}.items() if v})
     w, h = share.SIZES[size]
-    post = share.text_post(title, sub, p, streak, names, series)
+    post = share.text_post(title, sub, p, streak, names, series, tags)
+    urls = share.post_links(post, share.x_post(title, sub, p, streak, names, tags))
+    fname = f"worklog-{what}-{start.isoformat()}-{size}.png"
     custom_opts = "".join(f'<option value="{v}"{" selected" if v == what and not rng else ""}>{n}</option>'
                           for v, n in (("day", "A day"), ("week", "A week"), ("month", "A month"), ("year", "A year")))
     custom = (f'<details class="custom-period"{" open" if not rng else ""}><summary>Another day, week or month…</summary>'
@@ -1205,13 +1233,22 @@ def page_share(app: App, cfg: Config, q: dict) -> str:
     return (f'<div class="daynav"><h1><span class="grad">Share</span><small>{e(sub)}</small></h1></div>'
             + f'<div class="segs" style="margin-top:12px">{presets}</div>{custom}'
             + f'<section class="block">{empty}<div class="sharebar"><div class="segs">{sizes}</div>'
-              f'<a class="seg{" on" if names else ""}" href="{e(names_link)}">{"✓ " if names else ""}Project names</a></div>'
+              f'<div class="segs" aria-label="Show on the card"><span class="muted showlbl">Show on card:</span>'
+              f'{switches}</div></div>'
               f'<img class="sharecard {size}" id="sharecard" src="/share.svg?{e(params)}" width="{w}" height="{h}" '
-              f'alt="{e(share.text_line(title, sub, p, streak))}"><div class="row">'
-              f'<button type="button" id="sharepng" data-w="{w}" data-h="{h}" '
-              f'data-name="worklog-{e(what)}-{start.isoformat()}-{size}.png">⬇ Download PNG</button>'
-              f'<a class="btn quiet" href="/share.svg?{e(params)}" download="worklog-{e(what)}-{start.isoformat()}.svg">SVG</a>'
-              f'<button type="button" class="quiet copy" data-copy="{e(post)}">Copy text</button></div>'
+              f'alt="{e(share.text_line(title, sub, p, streak))}">'
+              f'<div class="row sharebtns" data-w="{w}" data-h="{h}" data-name="{e(fname)}">'
+              f'<a class="btn social li" data-share="LinkedIn" href="{e(urls["linkedin"])}" target="_blank" '
+              f'rel="noopener noreferrer"><b aria-hidden="true">in</b> Share on LinkedIn</a>'
+              f'<a class="btn social x" data-share="X" href="{e(urls["x"])}" target="_blank" '
+              f'rel="noopener noreferrer"><b aria-hidden="true">𝕏</b> Share on X</a>'
+              f'<button type="button" class="quiet" id="sharemore" hidden>More apps…</button>'
+              f'<button type="button" class="quiet" id="sharepng">⬇ Download PNG</button>'
+              f'<button type="button" class="quiet copy" data-copy="{e(post)}">Copy text</button>'
+              f'<a class="btn quiet" href="/share.svg?{e(params)}" download="{e(fname[:-4])}.svg">SVG</a></div>'
+              f'<p class="muted sharehelp">LinkedIn and X open with the text filled in. They don&#39;t let other '
+              f'pages attach a picture, so Worklog copies the card for you: press <kbd>Ctrl</kbd>+<kbd>V</kbd> '
+              f'(<kbd>⌘</kbd>+<kbd>V</kbd> on a Mac) in the post to add it. Sign in first if the site asks.</p>'
               f'<h2 style="margin-top:18px">Text for your post</h2><pre class="post">{e(post)}</pre>'
               f'<p class="muted" style="font-size:.85rem">Only totals are shown: no prompts, files, accounts or e-mails. '
               f'Project names only if you turn them on.</p></section>')
@@ -2961,8 +2998,9 @@ def make_handler(app: App):
                     if store is None:
                         return self._send(404, "No data repo", "text/plain")
                     what, start, end, per, streak, names, size, series, _ = _share_period(cfg, store, q)
-                    return self._send(200, share.card(*share.titles(what, start, end), per, streak, names, size, series),
-                                      "image/svg+xml")
+                    svg = share.card(*share.titles(what, start, end), per, streak, names, size, series,
+                                     q.get("tags") != "0")
+                    return self._send(200, svg, "image/svg+xml")
                 if url.path == "/year":
                     return self._page("Year", page_year(app, cfg, q), "trends", q.get("ok"))
                 if url.path == "/trends":

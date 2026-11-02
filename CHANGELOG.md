@@ -30,6 +30,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   gradient, a big hours number, a bar chart of the period with the best day highlighted, and your streak. It looks
   complete even when nothing is tagged.
 - **Copy text** now gives a ready-to-post text, one fact per line, shown under the card before you copy it.
+- **Share on LinkedIn** and **Share on X** buttons: they open a new post with the text filled in and copy the
+  card, so pressing Ctrl+V (⌘V) in the post adds the picture. The X text is shortened to fit 280 characters.
+  **More apps…** uses your system's share menu where the browser supports it.
+- **Show on card** switches for the kind of work and project names; the post text follows them.
 
 ## [0.5.0] - 2026-11-02
 

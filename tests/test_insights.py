@@ -189,7 +189,8 @@ def test_share_card_without_tags_and_text_post(two_weeks, home):
     post = share.text_post(*share.titles("week", start, end), p, streak, False, series)
     lines = post.splitlines()
     assert lines[0].startswith("🗓️ My week with Claude") and lines[1] == "" and "⏱️" in lines[2]
-    assert "🧩" not in post and "xoo" not in post and post.endswith("github.com/us-urvin/worklog-for-claude-code")
+    assert "🧩" not in post and "xoo" not in post and "https://github.com/us-urvin/worklog-for-claude-code" in post
+    assert post.endswith(share.HASHTAGS)
     assert "📌 xoo" in share.text_post(*share.titles("week", start, end), p, streak, True, series)
 
 
@@ -236,3 +237,31 @@ def test_year_page_and_settings(two_weeks, home, monkeypatch):
     digest_file.write_text(f"<!-- worklog-phone device=Home wrote={TODAY.isoformat()} -->\n")
     err = app.post("/settings/phone", {"on": "1"})[1]
     assert err and "Home already writes" in err
+
+
+def test_share_switches_and_posting_to_linkedin_and_x(two_weeks, home):
+    from urllib.parse import parse_qs, urlparse
+
+    from test_accounts import make_cfg
+    store, monday = two_weeks
+    cfg = make_cfg(home, store.path)
+    _, start, end, p, streak, _, _, series, _ = web._share_period(cfg, store, {"what": "week", "d": monday.isoformat()})
+    title, sub = share.titles("week", start, end)
+    assert 'class="tag"' in share.card(title, sub, p, streak, False, "wide", series)
+    assert 'class="tag"' not in share.card(title, sub, p, streak, False, "wide", series, tags=False)  # kind of work off
+    assert "🧩" in share.text_post(title, sub, p, streak, False, series)
+    assert "🧩" not in share.text_post(title, sub, p, streak, False, series, tags=False)
+    # X: always within 280 characters, the least important lines dropped first
+    p.projects["a-very-long-project-name-" * 3] = 5
+    for names in (False, True):
+        x = share.x_post(title, sub, p, 99, names)
+        assert share.x_length(x) <= share.X_LIMIT and x.endswith(share.HASHTAGS) and "⏱️" in x
+    assert share.x_length("hi https://example.com/" + "a" * 100) == 26
+    links = share.post_links("line 1\nline 2 & #tag", "short")
+    li, xx = urlparse(links["linkedin"]), urlparse(links["x"])
+    assert li.netloc == "www.linkedin.com" and parse_qs(li.query)["text"] == ["line 1\nline 2 & #tag"]
+    assert xx.netloc == "x.com" and xx.path == "/intent/post" and parse_qs(xx.query)["text"] == ["short"]
+    html = web.page_share(web.App(1), cfg, {"what": "week", "d": monday.isoformat(), "tags": "0"})
+    assert "Share on LinkedIn" in html and "Share on X" in html and "linkedin.com/feed/?shareActive=true" in html
+    assert "x.com/intent/post?text=" in html and "tags=0" in html and 'aria-checked="false"' in html
+    assert "🧩" not in html  # the post text follows the switch too

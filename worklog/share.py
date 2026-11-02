@@ -152,8 +152,9 @@ def _tags(x: float, y: float, p, max_w: float) -> str:
 
 
 def card(title: str, subtitle: str, p, streak: int = 0, names: bool = False, size: str = "wide",
-         series: list[tuple[str, int]] | None = None) -> str:
-    """The SVG card for a period (an insights.Period). `series` is the bar chart: (label, minutes)."""
+         series: list[tuple[str, int]] | None = None, tags: bool = True) -> str:
+    """The SVG card for a period (an insights.Period). `series` is the bar chart: (label, minutes).
+    `names` adds the top project names, `tags=False` leaves out the kind of work."""
     w, h = SIZES.get(size, SIZES["wide"])
     big, small = _big_hours(p.minutes)
     n_proj = len([1 for _, m in p.projects.items() if m])
@@ -177,7 +178,7 @@ def card(title: str, subtitle: str, p, streak: int = 0, names: bool = False, siz
             parts.append(chip)
             cx += cw + 12
         parts.append(_chart(56, 572, w - 112, 300, series or []))
-        parts.append(_tags(56, 900, p, w - 112))
+        parts.append(_tags(56, 900, p, w - 112) if tags else "")
         foot_y = 1030
     else:
         parts.append(f'<text x="56" y="170" class="title" style="font-size:52px">{_e(title)}</text>')
@@ -192,7 +193,7 @@ def card(title: str, subtitle: str, p, streak: int = 0, names: bool = False, siz
             parts.append(chip)
             cx += cw + 12
         parts.append(_chart(600, 200, 544, 270, series or []))
-        parts.append(_tags(600, 490, p, 544))
+        parts.append(_tags(600, 490, p, 544) if tags else "")
         foot_y = 592
     extra = []
     if names and p.projects:
@@ -206,14 +207,14 @@ def card(title: str, subtitle: str, p, streak: int = 0, names: bool = False, siz
 
 
 def text_post(title: str, subtitle: str, p, streak: int = 0, names: bool = False,
-              series: list[tuple[str, int]] | None = None) -> str:
+              series: list[tuple[str, int]] | None = None, tags: bool = True) -> str:
     """The same numbers as a ready-to-paste post, one fact per line."""
     lines = [f"🗓️ {title} ({subtitle})", "", f"⏱️ {_h(p.minutes)} of focused work"]
     n_proj = len([1 for _, m in p.projects.items() if m])
     lines.append(f"💬 {p.sessions} session{'s' * (p.sessions != 1)} · 📁 {n_proj} project{'s' * (n_proj != 1)}")
     if streak >= 2:
         lines.append(f"🔥 {streak}-day streak")
-    total = sum(p.tags.values())
+    total = sum(p.tags.values()) if tags else 0
     if total:
         lines.append("🧩 " + " · ".join(f"{t} {round(100 * m / total)}%" for t, m in p.tags.most_common(3)))
     if series and any(m for _, m in series):
@@ -230,7 +231,52 @@ def text_post(title: str, subtitle: str, p, streak: int = 0, names: bool = False
         lines.append(f"🤖 Mostly {model_label(p.models.most_common(1)[0][0])}")
     if names and p.projects:
         lines.append("📌 " + ", ".join(n for n, _ in p.projects.most_common(3)))
-    return "\n".join(lines + ["", "Tracked with Worklog for Claude Code", f"https://{REPO_URL}"])
+    return "\n".join(lines + ["", "Tracked with Worklog for Claude Code", f"https://{REPO_URL}", "", HASHTAGS])
+
+
+HASHTAGS = "#ClaudeCode #BuildInPublic"
+X_LIMIT = 280
+
+
+def x_length(text: str) -> int:
+    """How X counts a post: a link is always 23, most other symbols and emoji count as 2 (rounded up here)."""
+    import re
+    n = 0
+    for part in re.split(r"(https?://\S+)", text):
+        if part.startswith(("http://", "https://")):
+            n += 23
+        else:
+            n += sum(1 if ord(ch) <= 0x10FF or 0x2010 <= ord(ch) <= 0x201F else 2 for ch in part)
+    return n
+
+
+def x_post(title: str, subtitle: str, p, streak: int = 0, names: bool = False, tags: bool = True) -> str:
+    """A shorter post that fits X's 280 characters, the link included."""
+    n_proj = len([1 for _, m in p.projects.items() if m])
+    head = [f"🗓️ {title} ({subtitle})", "",
+            f"⏱️ {_h(p.minutes)} of focused work",
+            f"💬 {p.sessions} session{'s' * (p.sessions != 1)} · 📁 {n_proj} project{'s' * (n_proj != 1)}"]
+    optional = []
+    if streak >= 2:
+        optional.append(f"🔥 {streak}-day streak")
+    total = sum(p.tags.values()) if tags else 0
+    if total:
+        optional.append("🧩 " + " · ".join(f"{t} {round(100 * m / total)}%" for t, m in p.tags.most_common(2)))
+    if names and p.projects:
+        optional.append("📌 " + ", ".join(n for n, _ in p.projects.most_common(2)))
+    tail = ["", f"Tracked with Worklog for Claude Code https://{REPO_URL}", HASHTAGS]
+    while True:
+        text = "\n".join(head + optional + tail)
+        if x_length(text) <= X_LIMIT or not optional:
+            return text
+        optional.pop()  # the least important line goes first
+
+
+def post_links(linkedin_text: str, x_text: str) -> dict[str, str]:
+    """Web addresses that open a new post with the text filled in (you may be asked to sign in first)."""
+    from urllib.parse import quote
+    return {"linkedin": "https://www.linkedin.com/feed/?shareActive=true&text=" + quote(linkedin_text, safe=""),
+            "x": "https://x.com/intent/post?text=" + quote(x_text, safe="")}
 
 
 def text_line(title: str, subtitle: str, p, streak: int = 0) -> str:

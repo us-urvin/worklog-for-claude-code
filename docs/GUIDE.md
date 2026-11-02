@@ -255,7 +255,9 @@ It updates after every sync (hourly, and when a session ends) and after the nigh
 
 ## Share cards, badges and your year
 
-**Share** (from Trends) turns a period into an image to post. Pick **Today, Yesterday, This week, Last week, This month, Last month or This year**, or any other day, week or month. Choose **Wide** (1200×630, for X and LinkedIn) or **Square** (1080×1080, for Instagram). The card shows your hours, sessions, number of projects, a bar chart of the period, your streak, the kind of work (if tagged) and the top model. Project names appear only if you turn them on. Prompts, files, accounts and e-mails never do. **Download PNG** saves it, and **Copy text** copies a ready-made post, shown under the card.
+**Share** (from Trends) turns a period into an image to post. Pick **Today, Yesterday, This week, Last week, This month, Last month or This year**, or any other day, week or month. Choose **Wide** (1200×630, for X and LinkedIn) or **Square** (1080×1080, for Instagram). The card shows your hours, sessions, number of projects, a bar chart of the period, your streak, the kind of work (if tagged) and the top model. Under **Show on card**, turn the kind of work or project names on or off (project names are off unless you turn them on); the post text follows the same choice. Prompts, files, accounts and e-mails never appear.
+
+**Share on LinkedIn** and **Share on X** open a new post on that site with the text already filled in (sign in first if it asks). The sites don't let other pages attach a picture, so Worklog copies the card for you: press **Ctrl+V** (**⌘V** on a Mac) in the post to add it. If copying isn't allowed, the card is saved to your downloads to attach instead. The X text is shorter, to fit its 280 characters. **More apps…** (where your browser supports it) opens your computer's or phone's share menu with the picture attached. **Download PNG** saves the card, and **Copy text** copies the post shown under it.
 
 **Badges** (Trends, with Fun mode on) are worked out from your history, for example a 7-day streak, a night-owl session, or 5 failing test runs fixed in a week. A badge earned in the last week celebrates once.
 
