@@ -76,12 +76,16 @@ OK_MESSAGES = {
 
 
 # ================================================================== jobs
+class JobFailed(Exception):
+    """A job that failed in an expected way; its message is shown as is."""
+
+
 class Jobs:
     """One background job at a time (sync / summaries), so the UI never blocks."""
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._state = {"running": None, "finished": None, "message": "", "ok": True}
+        self._state = {"running": None, "finished": None, "finished_at": 0.0, "message": "", "ok": True}
 
     def start(self, name: str, fn) -> bool:
         with self._lock:
@@ -92,11 +96,14 @@ class Jobs:
         def run():
             try:
                 msg, ok = fn(), True
+            except JobFailed as exc:  # an expected failure that already explains itself
+                msg, ok = str(exc), False
             except Exception as exc:  # noqa: BLE001 - report any failure to the UI
                 log.exception("%s failed", name)
                 msg, ok = f"{name} failed: {exc}", False
             with self._lock:
-                self._state.update(running=None, finished=datetime.now().strftime("%H:%M"), message=msg, ok=ok)
+                self._state.update(running=None, finished=datetime.now().strftime("%H:%M"), finished_at=time.time(),
+                                   message=msg, ok=ok)
 
         threading.Thread(target=run, daemon=True).start()
         return True
@@ -104,6 +111,16 @@ class Jobs:
     def snapshot(self) -> dict:
         with self._lock:
             return dict(self._state)
+
+    def dismiss(self) -> None:
+        """Hide the last result (the ✕ on its banner)."""
+        with self._lock:
+            if not self._state["running"]:
+                self._state.update(message="", finished=None, finished_at=0.0)
+
+
+# How long a finished job's message stays on the pages (errors longer, so they aren't missed).
+RESULT_SECONDS, ERROR_SECONDS = 120, 900
 
 
 # ================================================================== helpers
@@ -289,6 +306,8 @@ background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(14px);
 button.danger-solid{background:#C2334B;color:#fff;box-shadow:none}
 #forget,#logins,#checklist,#add,#data-repo{scroll-margin-top:96px}
 #data-repo .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}a.btn.forget{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--rule))}
+.banner.closable{display:flex;align-items:center;gap:12px}.banner.closable>span{flex:1}
+.banner .close{margin:0}.banner .close button{padding:4px 10px}
 .notice.update{border-color:color-mix(in srgb,var(--ok) 55%,var(--rule))}.notice.update code{margin-right:4px}
 .notice.login,.notice.folder{border-color:color-mix(in srgb,var(--accent) 55%,var(--rule))}
 /* ---- motion: everything here is switched off by prefers-reduced-motion below */
@@ -340,6 +359,24 @@ color:var(--ink);background:color-mix(in srgb,#FB923C 18%,transparent);border:1p
 .toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:60;padding:12px 22px;border-radius:16px;font-weight:800;
 background:var(--glass);border:1px solid var(--rule);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--glow),var(--shadow);animation:toastin .35s ease-out both}
 #confetti{position:fixed;inset:0;pointer-events:none;z-index:59}
+.flash{position:fixed;right:18px;bottom:18px;z-index:61;display:flex;gap:12px;align-items:center;max-width:min(460px,calc(100vw - 32px));
+padding:12px 12px 12px 18px;border-radius:16px;font-weight:600;background:var(--glass);border:1px solid var(--rule);
+backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:var(--glow),var(--shadow);animation:rise .3s ease-out both}
+.flash span{flex:1;overflow-wrap:anywhere}.flash button{padding:4px 10px}.flash.ok{border-color:var(--ok)}.flash.bad{border-color:var(--bad)}
+.flash.run span::before{content:"";display:inline-block;width:14px;height:14px;margin-right:10px;vertical-align:-2px;border-radius:50%;
+border:2px solid var(--accent-2);border-right-color:transparent;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:560px){.flash{left:16px;right:16px;bottom:16px;max-width:none}}
+dialog.dlg{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;padding:22px 24px;border-radius:20px;color:var(--ink);
+background:var(--bg);border:1px solid var(--rule);box-shadow:var(--glow),var(--shadow)}
+dialog.dlg::backdrop{background:rgba(5,8,20,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+dialog.dlg p{overflow-wrap:anywhere;max-width:none}dialog.dlg.bad{border-color:color-mix(in srgb,var(--bad) 60%,var(--rule))}
+dialog.dlg.bad h2{color:var(--bad)}dialog.dlg.ok{border-color:color-mix(in srgb,var(--ok) 60%,var(--rule))}
+dialog.dlg .forget-body ul{padding-left:1.2em}dialog.dlg .row:last-child:empty{display:none}
+button.busy{position:relative;color:transparent!important}button.busy::after{content:"";position:absolute;inset:0;margin:auto;width:16px;height:16px;
+border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;animation:spin .8s linear infinite}
+details.help-more{margin-top:16px}details.help-more ol{padding-left:1.2em;margin:8px 0}details.help-more li{margin:8px 0}
+details.help-more p{margin:8px 0;max-width:72ch}
 body.party::before{animation:hue 1.2s linear infinite}body.party svg .bar{animation:bounce .35s ease-in-out infinite alternate}
 body.party .tile{animation:wiggle .25s ease-in-out infinite alternate}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -384,12 +421,12 @@ var say=function(m){b.textContent=m;setTimeout(function(){b.textContent='Copy'},
 var manual=function(){var pre=b.parentNode.querySelector('pre');if(pre){var r=document.createRange();r.selectNodeContents(pre);
 var s=window.getSelection();s.removeAllRanges();s.addRange(r)}say(navigator.platform.indexOf('Mac')===0?'Press \u2318C':'Press Ctrl+C')};
 if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(b.dataset.copy).then(function(){say('Copied!')},manual)}else{manual()}});
+var W=window.worklog={};
+W.init=function(){
 (function(){var s=document.getElementById('model'),t=document.getElementById('model_custom');if(!s||!t)return;
 function sync(){t.hidden=s.value!=='custom'}s.addEventListener('change',function(){sync();if(!t.hidden)t.focus()});sync()})();
-(function(){var b=document.getElementById('jobstate');if(!b||b.dataset.running!=='1')return;
-function poll(){fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
-if(!s.running){location.reload()}else{setTimeout(poll,2000)}}).catch(function(){setTimeout(poll,4000)})}
-setTimeout(poll,2000)})();
+(function(){var b=document.getElementById('jobstate');if(!b||b.dataset.running!=='1'||W.following)return;
+W.wait().then(function(){W.refresh()})})();
 (function(){var btn=document.getElementById('chatupload'),inp=document.getElementById('chatfile');if(!btn||!inp)return;
 var out=document.getElementById('chatuploadstate');
 btn.addEventListener('click',function(){var f=inp.files[0];if(!f){out.textContent='Choose the conversations zip first.';return}
@@ -397,8 +434,67 @@ if(f.size>btn.dataset.max*1){out.textContent='That file is too large.';return}
 btn.disabled=true;out.textContent='Uploading '+f.name+'…';
 fetch('/sources/upload',{method:'POST',body:f,headers:{'Content-Type':'application/octet-stream',
 'X-CSRF-Token':btn.dataset.csrf,'X-File-Name':encodeURIComponent(f.name)}}).then(function(r){
-return r.json().then(function(j){if(r.ok){location.href='/sources?ok=job'}else{out.textContent=j.error||'Upload failed.';btn.disabled=false}})})
+return r.json().then(function(j){if(r.ok){W.follow('Reading the export',null,{})}else{out.textContent=j.error||'Upload failed.';btn.disabled=false}})})
 .catch(function(){out.textContent='Upload failed. Is the worklog service running?';btn.disabled=false})})})();
+};
+W.wait=function(){return new Promise(function(done){var tries=0;(function poll(){tries++;
+fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){if(s.running&&tries<900){setTimeout(poll,1000)}else{done(s)}})
+.catch(function(){if(tries<900){setTimeout(poll,2000)}else{done({})}})})()})};
+W.refresh=function(){var u=location.pathname+location.search.replace(/([?&])ok=[^&]*&?/,'$1').replace(/[?&]$/,'');
+return fetch(u,{cache:'no-store'}).then(function(r){return r.text()}).then(function(html){
+var d=new DOMParser().parseFromString(html,'text/html'),nw=d.querySelector('.wrap'),old=document.querySelector('.wrap');if(!nw||!old)return;
+var y=window.scrollY,open=[].map.call(old.querySelectorAll('details[open][id]'),function(x){return x.id});
+document.adoptNode(nw);old.replaceWith(nw);open.forEach(function(id){var x=document.getElementById(id);if(x)x.open=true});
+window.scrollTo(0,y);document.title=d.title;if(u!==location.pathname+location.search)history.replaceState(null,'',u+location.hash);W.init()})};
+W.flash=function(text,kind){var old=document.getElementById('flash');if(old)old.remove();
+var f=document.createElement('div');f.id='flash';f.className='flash '+(kind||'');f.setAttribute('role',kind==='bad'?'alert':'status');
+var t=document.createElement('span');t.textContent=text;f.appendChild(t);
+if(kind!=='run'){var x=document.createElement('button');x.type='button';x.className='quiet';x.setAttribute('aria-label','Close');x.textContent='✕';
+x.addEventListener('click',function(){f.remove()});f.appendChild(x)}
+document.body.appendChild(f);if(kind==='ok')setTimeout(function(){if(f.isConnected)f.remove()},7000);return f};
+W.dialog=function(title,body,opts){opts=opts||{};var d=document.createElement('dialog');d.className='dlg'+(opts.kind?' '+opts.kind:'');
+var h=document.createElement('h2');h.textContent=title;d.appendChild(h);
+if(typeof body==='string'){var p=document.createElement('p');p.textContent=body;d.appendChild(p)}else if(body){d.appendChild(body)}
+var row=document.createElement('div');row.className='row';
+if(opts.yes){var y=document.createElement('button');y.type='button';y.className=opts.danger?'danger-solid':'';y.textContent=opts.yes;
+y.addEventListener('click',function(){d.close();opts.onyes()});row.appendChild(y)}
+if(!opts.noclose){var c=document.createElement('button');c.type='button';c.className='quiet';c.textContent=opts.yes?'Cancel':'OK';
+c.addEventListener('click',function(){d.close()});row.appendChild(c)}
+d.appendChild(row);d.addEventListener('close',function(){d.remove()});document.body.appendChild(d);d.showModal();
+var first=d.querySelector('input,button');if(first)first.focus();return d};
+W.follow=function(name,form,opts){W.following=true;W.flash(name+'…','run');
+return W.wait().then(function(s){W.following=false;var fl=document.getElementById('flash');if(fl)fl.remove();
+var ok=s.ok!==false,msg=s.message||'Done.';
+var csrf=form&&form.querySelector('input[name=csrf]');
+if(csrf){fetch('/jobs/dismiss',{method:'POST',headers:{'X-Worklog':'fetch','Content-Type':'application/x-www-form-urlencoded'},
+body:'csrf='+encodeURIComponent(csrf.value)}).catch(function(){})}
+if(opts.result==='dialog'){W.dialog(ok?'✅ '+(opts.oktitle||'Done'):'⚠️ '+(opts.badtitle||'Something went wrong'),msg,{kind:ok?'ok':'bad'})}
+else{W.flash(msg,ok?'ok':'bad')}return W.refresh()})};
+W.send=function(form,submitter){var btns=form.querySelectorAll('button');btns.forEach(function(b){b.disabled=true});
+var label=submitter&&submitter.textContent;if(submitter)submitter.classList.add('busy');
+var data=new URLSearchParams(new FormData(form));if(submitter&&submitter.name)data.append(submitter.name,submitter.value);
+var again=function(){btns.forEach(function(b){b.disabled=false});if(submitter){submitter.classList.remove('busy');submitter.textContent=label}};
+fetch(form.action,{method:'POST',body:data,headers:{'X-Worklog':'fetch'}}).then(function(r){return r.json()}).then(function(j){
+var dlg=form.closest('dialog');if(dlg&&!j.error)dlg.close();
+if(j.error){again();if(dlg){var e=dlg.querySelector('.dlg-error')||dlg.insertBefore(document.createElement('p'),dlg.querySelector('form'));
+e.className='dlg-error state-bad';e.textContent=j.error}else{W.flash(j.error,'bad')}return}
+if(j.job){return W.follow(j.job,form,{result:form.dataset.result,oktitle:form.dataset.oktitle,badtitle:form.dataset.badtitle})}
+if(j.message)W.flash(j.message,'ok');return W.refresh()}).catch(function(){again();
+W.flash('Worklog didn’t answer. Is it still running? Try reloading the page.','bad')})};
+document.addEventListener('submit',function(ev){var f=ev.target;
+if(!f||f.method!=='post'||f.hasAttribute('data-plain')||!window.fetch||!window.DOMParser)return;
+ev.preventDefault();var sub=ev.submitter;
+if(f.dataset.confirm){W.dialog('Are you sure?',f.dataset.confirm,{yes:f.dataset.confirmYes||'Yes',danger:true,onyes:function(){W.send(f,sub)}});return}
+W.send(f,sub)});
+document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a.forget');
+if(!a||!window.fetch||!window.HTMLDialogElement)return;ev.preventDefault();
+fetch(a.href,{cache:'no-store'}).then(function(r){return r.text()}).then(function(html){
+var sec=new DOMParser().parseFromString(html,'text/html').getElementById('forget');if(!sec){location.href=a.href;return}
+var h=sec.querySelector('h2'),title=h?h.textContent:'Forget this login?';if(h)h.remove();
+sec.removeAttribute('id');sec.className='forget-body';
+var cancel=sec.querySelector('a.btn.quiet');if(cancel)cancel.addEventListener('click',function(e){e.preventDefault();sec.closest('dialog').close()});
+W.dialog(title,sec,{kind:'bad',noclose:true})}).catch(function(){location.href=a.href})});
+W.init();
 """
 
 
@@ -417,22 +513,33 @@ LOGO = ('<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="l
         '<rect x="21" y="7" width="4" height="18" rx="2" fill="#0B0F24"/></svg>')
 
 
+def _result_visible(job: dict) -> bool:
+    """A finished job's message shows for a little while, then goes away by itself."""
+    if str(job.get("message", "")).startswith("Updated to"):
+        return True  # the page is waiting for the restart
+    age = time.time() - float(job.get("finished_at") or 0)
+    return age < (RESULT_SECONDS if job.get("ok") else ERROR_SECONDS)
+
+
 def layout(title: str, body: str, active: str, nonce: str, job: dict, ok: str | None = None, error: str | None = None,
-           extra: str = "", fun: bool = False) -> str:
+           extra: str = "", fun: bool = False, csrf: str = "") -> str:
     nav = "".join(f'<a href="{h}"{" aria-current=page" if k == active else ""}>{t}</a>'
                   for k, h, t in (("day", "/", "Today"), ("sources", "/sources", "Sources"),
                                   ("settings", "/settings", "Settings")))
     banners = ""
     if job.get("running"):
         banners += f'<div class="banner" id="jobstate" data-running="1" role="status">{e(job["running"])}…</div>'
-    elif job.get("message") and job.get("finished"):
+    elif job.get("message") and job.get("finished") and _result_visible(job):
         cls = "ok" if job.get("ok") else "bad"
         cheer = (f' data-celebrate="summaries:{e(job["finished"])}|Summaries are ready ✍️"'
                  if job.get("ok") and str(job["message"]).startswith("Summaries written") else "")
         if job.get("ok") and str(job["message"]).startswith("Updated to"):  # reload once the new version answers
             cheer += f' id="restarting" data-version="{e(__version__)}"'
-        banners += (f'<div class="banner {cls}" role="status"{cheer}>{e(job["message"])} '
-                    f'<span class="muted">({e(job["finished"])})</span></div>')
+        close = (f'<form method="post" action="/jobs/dismiss" class="close">'
+                 f'<input type="hidden" name="csrf" value="{e(csrf)}"><button class="quiet" aria-label="Close">✕</button>'
+                 f'</form>' if csrf else "")
+        banners += (f'<div class="banner {cls} closable" role="status"{cheer}><span>{e(job["message"])} '
+                    f'<span class="muted">({e(job["finished"])})</span></span>{close}</div>')
     if ok in OK_MESSAGES:
         banners += f'<div class="banner ok" role="status">{e(OK_MESSAGES[ok])}</div>'
     if error:
@@ -769,7 +876,7 @@ def page_setup(app: App, form: dict | None = None) -> str:
     basics = checks.run(None)
     pre = "" if all(x.ok for x in basics) else checklist_html(app, basics, "Before you start", show_tips=False)
     return pre + f"""<h1>Set up this device<small>One time only. You can change everything later in Settings.</small></h1>
-<form method="post" action="/setup" style="margin-top:24px"><input type="hidden" name="csrf" value="{app.csrf}">
+<form method="post" action="/setup" data-plain style="margin-top:24px"><input type="hidden" name="csrf" value="{app.csrf}">
 <section class="block"><h2>This device</h2><p class="help">A short name so the report can tell your machines apart. Use a different name on each device.</p>
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{v('device', default_device)}" required pattern="{NAME_PATTERN}"></section>
 <section class="block"><h2>Data repo</h2><p class="help">A private git repo (GitHub, GitLab or Bitbucket) that every device syncs to. Create it empty on the website first.
@@ -866,7 +973,7 @@ def _update_html(app: App, cfg: Config) -> str:
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
     busy = " disabled" if app.jobs.snapshot().get("running") else ""
     if updates.upgrade_command():
-        act = f'<form method="post" action="/update">{c}<button{busy}>Update now</button></form>'
+        act = f'<form method="post" action="/update" data-plain>{c}<button{busy}>Update now</button></form>'
     else:
         cmd = updates.manual_command()
         act = (f'<code>{e(cmd)}</code><button type="button" class="quiet copy" data-copy="{e(cmd)}">Copy</button>')
@@ -877,9 +984,20 @@ def _update_html(app: App, cfg: Config) -> str:
             f'value="update:{e(new)}"><button class="quiet" aria-label="Dismiss">✕</button></form></span></div>')
 
 
+def _restart_html(app: App) -> str:
+    """Upgraded with pipx/pip while this server kept running: offer to switch to the new version."""
+    disk = updates.version_on_disk()
+    if services.demo_mode() or not disk or disk == __version__ or app.jobs.snapshot().get("running"):
+        return ""
+    return (f'<div class="notice update" role="status"><span class="ico" aria-hidden="true">🔄</span>'
+            f'<span class="txt"><b>Worklog {e(disk)} is installed</b>, but this page still runs {e(__version__)}. '
+            f'Restart to use the new version.</span><span class="acts"><form method="post" action="/restart" data-plain>'
+            f'<input type="hidden" name="csrf" value="{app.csrf}"><button>Restart now</button></form></span></div>')
+
+
 def top_panels(app: App, cfg: Config, active: str = "") -> str:
     """Shown under the header on every page: the setup checklist (until done) and watcher notices."""
-    out = _update_html(app, cfg)
+    out = _restart_html(app) + _update_html(app, cfg)
     just = updates.pop_updated()
     if just:
         out = (f'<div class="banner ok" role="status" data-celebrate="updated:{e(just)}|Worklog {e(just)} is here 🎉">'
@@ -1022,7 +1140,9 @@ def data_repo_section(app: App, cfg: Config) -> str:
                 f'<code>git init {folder}</code>, or clone your private repo there.</p>')
         return f'<section class="block" id="data-repo"><h2>Private data repo</h2>{body}</section>'
     buttons = (f'<div class="row"><form method="post" action="/action/collect">{c}<button>Sync now</button></form>'
-               f'<form method="post" action="/sync/test">{c}<button class="quiet">Test connection</button></form></div>')
+               f'<form method="post" action="/sync/test" data-result="dialog" data-oktitle="Connection works" '
+               f'data-badtitle="Can&#39;t connect">{c}<button class="quiet">Test connection</button>'
+               f'</form></div>')
     if not st["remote"]:
         body = (f'<div class="meta"><span class="pill">Local only</span><span class="muted">Not connected. Your log '
                 f'stays in <code>{folder}</code> on this computer and isn&#39;t backed up.</span></div>'
@@ -1040,15 +1160,17 @@ def data_repo_section(app: App, cfg: Config) -> str:
         threading.Thread(target=syncstatus.visibility, args=(st["host"], st["slug"]), daemon=True).start()
     privacy = {"private": '<span class="pill ok">🔒 Private</span>',
                "public": '<span class="pill bad">⚠️ PUBLIC: anyone can read your log</span>',
-               "unknown": '<span class="pill">Privacy not checked (only possible for GitHub)</span>',
+               "unknown": ('<span class="pill">Privacy not checked (GitHub didn&#39;t answer; it&#39;s asked again later)</span>'
+                           if st.get("host") == "github.com" else
+                           '<span class="pill">Privacy not checked (only possible for GitHub)</span>'),
                None: '<span class="pill">Checking privacy…</span>'}[vis]
     push, pull = st["push"], st["pull"]
     if push and not push["ok"]:
         health = (f'<span class="pill bad">Last upload failed</span><span class="muted">{_ago(push["at"])}: '
-                  f'{e(push["error"][:160])}</span>')
+                  f'{e(syncstatus._main_line(push["error"])[:200])}</span>')
     elif pull and not pull["ok"]:
         health = (f'<span class="pill bad">Last download failed</span><span class="muted">{_ago(pull["at"])}: '
-                  f'{e(pull["error"][:160])}</span>')
+                  f'{e(syncstatus._main_line(pull["error"])[:200])}</span>')
     elif push:
         health = f'<span class="pill ok">Synced</span><span class="muted">last upload {_ago(push["at"])}</span>'
     else:
@@ -1062,8 +1184,48 @@ def data_repo_section(app: App, cfg: Config) -> str:
 <div class="meta"><span class="pill ok">Connected</span><span>to <a href="{e(st["web_url"])}" target="_blank"
 rel="noopener noreferrer"><b>{e(st["remote"])}</b> ↗</a></span>{privacy}</div>
 <div class="meta" style="margin-top:8px">{health}{waiting}</div>{warn}
+{_signin_html(st)}
 <p class="muted" style="font-size:.85rem;margin:10px 0 0">Folder <code>{folder}</code> · branch <code>{e(st["branch"])}</code>
-· last change {e(st["last_change"] or "none yet")}</p>{buttons}</section>"""
+· last change {e(st["last_change"] or "none yet")}</p>{buttons}{_accounts_help(st, folder)}</section>"""
+
+
+def _signin_html(st: dict) -> str:
+    """How this computer signs in to the data repo: which account, which key, which SSH nickname."""
+    site = syncstatus.SITES.get(st.get("host") or "", st.get("host") or "the host")
+    bits = []
+    if st.get("account"):
+        bits.append(f'<span class="pill ok">Signs in as {e(st["account"])}</span>')
+    if st.get("via") == "ssh":
+        how = "SSH key " + (f'<code>{e(st["key"])}</code>' if st.get("key") else "(your default key)")
+        if st.get("alias"):
+            how += f' through the nickname <code>{e(st["alias"])}</code> from <code>~/.ssh/config</code>'
+        bits.append(f'<span class="muted">{how}</span>')
+    elif st.get("via") == "https":
+        bits.append('<span class="muted">HTTPS, with the login saved by git' +
+                    (f' for <b>{e(st["url_user"])}</b>' if st.get("url_user") else "") + "</span>")
+    if not st.get("account") and st.get("via"):
+        bits.append(f'<span class="muted">Click <b>Test connection</b> to see which {e(site)} account this is.</span>')
+    return f'<div class="meta signin" style="margin-top:8px">{"".join(bits)}</div>' if bits else ""
+
+
+def _accounts_help(st: dict, folder: str) -> str:
+    """Several GitHub (or GitLab) accounts on one computer: how to make Worklog use the right one."""
+    folder_alias = e(st.get("alias") or "github-worklog")
+    slug = e(st.get("slug") or "YOU/claude-worklog-data")
+    cfg_text = (f"Host {folder_alias}\n  HostName {e(st.get('host') or 'github.com')}\n  User git\n"
+                f"  IdentityFile {e(st.get('key') or '~/.ssh/id_worklog')}\n  IdentitiesOnly yes")
+    return f"""<details class="help-more"><summary>Several GitHub accounts on this computer?</summary>
+<p>{e(syncstatus.SITES.get(st.get("host") or "", "The host"))} decides who you are by the <b>SSH key</b>, not by your
+browser login. Worklog uploads with whatever key the repo address points to, so give the account that owns the data repo
+its own key and a nickname:</p>
+<ol><li>Make a key: <code>ssh-keygen -t ed25519 -f ~/.ssh/id_worklog</code>, and add <code>~/.ssh/id_worklog.pub</code> to
+<b>that</b> account (Settings → SSH keys), or to the repo as a deploy key with write access.</li>
+<li>Add this to <code>~/.ssh/config</code>:<div class="cmdrow"><pre class="cmd">{cfg_text}</pre>
+<button type="button" class="quiet copy" data-copy="{cfg_text}">Copy</button></div></li>
+<li>Point the data repo at the nickname:<div class="cmdrow"><pre class="cmd">git -C {folder} remote set-url origin git@{folder_alias}:{slug}.git</pre></div></li>
+<li>Click <b>Test connection</b>: it shows which account signed in.</li></ol>
+<p class="muted">Your other repos keep using your usual key. Only this folder uses the nickname. On a network
+that blocks SSH (port 22), use <code>HostName ssh.github.com</code> and add <code>Port 443</code>.</p></details>"""
 
 
 def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
@@ -1083,7 +1245,9 @@ def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
         hook_btn = ('<span class="pill ok">Hook installed</span>' if hooked else
                     f'<form method="post" action="/accounts/hook">{c}<input type="hidden" name="name" value="{e(a.name)}">'
                     f'<button>Install hook</button></form>')
-        remove = (f'<form method="post" action="/accounts/remove">{c}<input type="hidden" name="name" value="{e(a.name)}">'
+        remove = (f'<form method="post" action="/accounts/remove" data-confirm="Remove the account {e(a.name)} from this '
+                  f'device? Worklog stops tracking its folder here. Records already synced stay in your data repo." '
+                  f'data-confirm-yes="Remove {e(a.name)}">{c}<input type="hidden" name="name" value="{e(a.name)}">'
                   f'<button class="danger">Remove</button></form>') if len(cfg.accounts) > 1 else ""
         mine = sorted({mask_email(x["email"]) for x in logins for d in x["dirs"]
                        if d == a.config_dir and cfg.resolve_account(d, x["account_id"], x["email"]) is a})
@@ -1231,11 +1395,16 @@ class App:
             return (f"/?d={day.isoformat()}&ok=job" if started else f"/?d={day.isoformat()}"), None, form
         if path == "/accounts/add":
             return self._account_add(cfg, form)
+        if path == "/jobs/dismiss":
+            self.jobs.dismiss()
+            return "/", None, form
+        if path == "/restart":
+            return self._restart_after_update(form)
         if path == "/sync/test":
             def job():
                 ok, msg = syncstatus.test_connection(cfg)
                 if not ok:
-                    raise RuntimeError(msg)
+                    raise JobFailed(msg)
                 return msg
             started = self.jobs.start("Testing the connection", job)
             return ("/settings?ok=job#data-repo" if started else "/settings#data-repo"), None, form
@@ -1384,12 +1553,28 @@ class App:
                 raise RuntimeError(msg)
             new = updates.installed_version()
             if new == __version__:
+                latest = updates.available()
+                if latest:  # PyPI said there is a newer one, but pip couldn't get it yet
+                    raise RuntimeError(f"PyPI is still publishing Worklog {latest}, so pip found nothing newer "
+                                       f"than {__version__}. Try again in a few minutes.")
                 return f"Worklog {__version__} is already the newest version."
             updates.note_updated(new)  # the new version says "Worklog is now …" once
             threading.Timer(1.5, self.restart).start()  # let this message reach the page first
             return f"Updated to {new}. Restarting…"
         started = self.jobs.start("Updating Worklog", job)
         return ("/?ok=job" if started else "/"), None, form
+
+    def _restart_after_update(self, form: dict):
+        """Worklog was upgraded from a terminal: restart this server on the new code (the page reloads itself)."""
+        disk = updates.version_on_disk()
+        if services.demo_mode() or not disk or disk == __version__:
+            return "/", None, form
+
+        def job():
+            threading.Timer(1.5, self.restart).start()
+            return f"Updated to {disk}. Restarting…"
+        self.jobs.start("Restarting", job)
+        return "/?ok=job", None, form
 
     def restart(self) -> None:
         updates.restart_server(self.port, self.close)
@@ -1510,6 +1695,23 @@ def _parse_date(v: str | None) -> date | None:
     return min(d, date.today())
 
 
+JOB_PATHS = {"/action/collect", "/action/report", "/sources/scan", "/sync/test", "/accounts/forget", "/update",
+             "/restart"}
+
+
+def _fetch_answer(app: App, path: str, location: str | None, error: str | None) -> dict:
+    """What a form sent by the page's script gets back: an error to show, a started job to follow, or a message."""
+    if error:
+        return {"ok": False, "error": error}
+    ok = (parse_qs(urlsplit(location or "").query).get("ok") or [""])[0]
+    running = app.jobs.snapshot().get("running")
+    if ok == "job":  # it may already be done: the script then reads the result straight away
+        return {"ok": True, "job": running or "Working"}
+    if path in JOB_PATHS and ok != "job" and running:
+        return {"ok": False, "error": f"Please wait: “{running}” is still running."}
+    return {"ok": True, "message": OK_MESSAGES.get(ok, "")}
+
+
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
         server_version = "claude-worklog"
@@ -1547,7 +1749,8 @@ def make_handler(app: App):
             nonce = secrets.token_urlsafe(16)
             cfg = _try_config() if title != "Set up" else None
             extra = top_panels(app, cfg, active) if cfg else ""
-            page = layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra, fun=bool(cfg and cfg.fun))
+            page = layout(title, body, active, nonce, app.jobs.snapshot(), ok, error, extra, fun=bool(cfg and cfg.fun),
+                          csrf=app.csrf)
             self._send(status, page, nonce=nonce)
 
         # ---------------------------------------------------------- GET
@@ -1604,6 +1807,8 @@ def make_handler(app: App):
             except Exception as exc:  # noqa: BLE001
                 log.exception("POST %s failed", path)
                 location, error, kept = None, f"Something went wrong: {exc}", form
+            if self.headers.get("X-Worklog") == "fetch":  # the page's script: answer in place, no reload
+                return self._send(200, json.dumps(_fetch_answer(app, path, location, error)), "application/json")
             if location:
                 return self._redirect(location)
             cfg = _try_config()

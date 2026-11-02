@@ -74,7 +74,11 @@ A checklist then shows anything still missing, with the exact command for your c
 
 **Several accounts or computers?** Settings walks you through it. For several computers, see [Full setup](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup).
 
-**How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade worklog-for-claude-code`.
+**Using several GitHub accounts?** GitHub knows you by your SSH key. In Settings → Private data repo, click **Test connection** to see which account signs in, and open *Several GitHub accounts on this computer?* for the steps. [More →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#full-setup)
+
+**Uploads to my data repo fail?** Click **Test connection** in Settings: it says what's wrong in plain words. See [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#uploads-fail-or-the-wrong-github-account-is-used).
+
+**How do I update?** Click **Update now** when the dashboard says a new version is out, or run `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`.
 
 **Something isn't working?** Run `claude-worklog doctor`, or see [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md).
 

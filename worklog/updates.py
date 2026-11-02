@@ -26,6 +26,10 @@ PACKAGE = "worklog-for-claude-code"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE}/json"
 CHANGELOG_URL = "https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md"
 CHECK_EVERY = 24 * 3600  # seconds
+# pip keeps PyPI's version list for up to 10 minutes, and PyPI's mirrors take a few minutes to catch up,
+# so a release is only announced once it is this old: "Update now" can then really get it.
+SETTLE = 15 * 60
+RETRY = 3600  # a release still settling is checked again after an hour, not a day
 
 
 def _state_path() -> Path:
@@ -45,8 +49,27 @@ def is_newer(latest: str, current: str = __version__) -> bool:
     return parse(latest) > parse(current)
 
 
-def fetch_latest(timeout: float = 5.0) -> str | None:
-    """The newest release on PyPI (skips yanked and pre-releases), or None when offline."""
+def _uploaded_at(data: dict, version: str) -> float | None:
+    """When the release's first file was uploaded (seconds since the epoch), if PyPI says."""
+    from datetime import datetime
+    files = (data.get("releases") or {}).get(version)
+    if files is None:
+        files = data.get("urls") or []
+    stamps = []
+    for f in files if isinstance(files, list) else []:
+        raw = str((f or {}).get("upload_time_iso_8601") or "").replace("Z", "+00:00")
+        try:
+            stamps.append(datetime.fromisoformat(raw).timestamp())
+        except ValueError:
+            continue
+    return min(stamps) if stamps else None
+
+
+def fetch_latest(timeout: float = 5.0, now: float | None = None) -> str | None:
+    """The newest release on PyPI that can be installed already, or None (offline, or still settling).
+
+    Skips pre-releases, releases with no files yet, and ones uploaded less than SETTLE ago.
+    """
     try:
         req = Request(PYPI_URL, headers={"Accept": "application/json", "User-Agent": f"claude-worklog/{__version__}"})
         with urlopen(req, timeout=timeout) as r:  # noqa: S310 - fixed https URL
@@ -55,7 +78,15 @@ def fetch_latest(timeout: float = 5.0) -> str | None:
         log.info("update check failed (offline?): %s", exc)
         return None
     latest = str((data.get("info") or {}).get("version") or "")
-    return latest if re.match(r"^\d+(\.\d+)*$", latest) else None
+    if not re.match(r"^\d+(\.\d+)*$", latest):
+        return None
+    if "releases" in data and not (data["releases"] or {}).get(latest):
+        return None  # announced but no files uploaded yet
+    uploaded = _uploaded_at(data, latest)
+    if uploaded is not None and (now or time.time()) - uploaded < SETTLE:
+        log.info("Worklog %s was just published; announcing it once PyPI has settled", latest)
+        return None
+    return latest
 
 
 def load_state() -> dict:
@@ -77,10 +108,12 @@ def check(force: bool = False, now: float | None = None) -> str | None:
     now = now or time.time()
     state = load_state()
     if force or now - float(state.get("checked_at", 0)) >= CHECK_EVERY:
-        latest = fetch_latest()
+        latest = fetch_latest(now=now)
         state["checked_at"] = now
         if latest:
             state["latest"] = latest
+        else:  # offline, or a release still settling: look again in an hour
+            state["checked_at"] = now - CHECK_EVERY + RETRY
         _save_state(state)
     return state.get("latest")
 
@@ -136,9 +169,12 @@ def upgrade_command(kind: str | None = None) -> list[str] | None:
     kind = kind or install_kind()
     if kind == "pipx":
         pipx = shutil.which("pipx")
-        return [pipx, "upgrade", PACKAGE] if pipx else [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE]
+        if pipx:
+            # --no-cache-dir: a version list pip saved minutes ago may not have the new release yet
+            return [pipx, "upgrade", "--pip-args=--no-cache-dir", PACKAGE]
+        return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", PACKAGE]
     if kind == "venv":
-        return [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE]
+        return [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", PACKAGE]
     return None  # a source checkout, or a system Python we shouldn't touch
 
 
@@ -147,8 +183,8 @@ def manual_command(kind: str | None = None) -> str:
     if kind == "dev":
         return "git pull"
     if kind == "system":
-        return f"python3 -m pip install --user --upgrade {PACKAGE}"
-    return f"pipx upgrade {PACKAGE}"
+        return f"python3 -m pip install --user --upgrade --no-cache-dir {PACKAGE}"
+    return f"pipx upgrade --pip-args=--no-cache-dir {PACKAGE}"
 
 
 def upgrade(timeout: int = 300) -> tuple[bool, str]:
@@ -164,6 +200,19 @@ def upgrade(timeout: int = 300) -> tuple[bool, str]:
         tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [""]
         return False, f"Update failed ({tail[0][:200]}). Try by hand: {manual_command()}"
     return True, "Updated."
+
+
+def version_on_disk() -> str | None:
+    """The version in the installed package's files right now: cheap (one small file read, no new process).
+
+    Differs from the running __version__ after `pipx upgrade` while the server keeps running.
+    """
+    try:
+        text = (Path(__file__).with_name("__init__.py")).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
+    return m.group(1) if m else None
 
 
 def installed_version() -> str:

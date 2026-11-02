@@ -16,6 +16,8 @@ Lines starting with ✓ are fine. Lines starting with ✗ show the problem. If n
 - [It shows Sonnet, but I use Opus](#it-shows-sonnet-but-i-use-opus)
 - [A session is counted under the wrong account](#a-session-is-counted-under-the-wrong-account)
 - [My other computer doesn't show up](#my-other-computer-doesnt-show-up)
+- [Uploads fail, or the wrong GitHub account is used](#uploads-fail-or-the-wrong-github-account-is-used)
+- [pipx says "already at latest version" but a newer one is out](#pipx-says-already-at-latest-version-but-a-newer-one-is-out)
 - [Token numbers look wrong after a Claude Code update](#token-numbers-look-wrong-after-a-claude-code-update)
 - [Reading the logs](#reading-the-logs)
 
@@ -81,6 +83,26 @@ There are two different places a model shows up:
 ## My other computer doesn't show up
 
 Each computer has to sync to the same private data repo. See [Full setup](GUIDE.md#full-setup). On the other computer, run `claude-worklog doctor`. The `store repo` line should show a `remote`, not `none — local only`.
+
+## pipx says "already at latest version" but a newer one is out
+
+Right after a release, pip can still be using the version list it saved a few minutes ago, and PyPI takes a few minutes to publish a new version everywhere. Tell pip to skip its saved list:
+
+```bash
+pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code
+```
+
+Still the old version? Wait 5–10 minutes and run it again. **Update now** on the dashboard skips the saved list by itself, and if PyPI isn't ready yet it says so.
+
+Upgraded from a terminal while Worklog was running? The dashboard shows **Restart now** so the page switches to the new version.
+
+## Uploads fail, or the wrong GitHub account is used
+
+Open **Settings → Private data repo** and click **Test connection**. It shows which account this computer signs in as and why it fails:
+
+- **Says your key belongs to another account** (for example your work account): that account can't see the data repo. Follow *Several GitHub accounts on this computer?* in the same section: give the data repo its own key and an SSH nickname.
+- **Connection timed out** on port 22: some networks block SSH. In `~/.ssh/config`, use `HostName ssh.github.com` and add `Port 443`.
+- **"Committer identity unknown"** in *Last download failed*: fixed in 0.3.2. Update, then click **Sync now**. Changes that were waiting upload too.
 
 ## Token numbers look wrong after a Claude Code update
 

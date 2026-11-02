@@ -57,7 +57,9 @@ claude-worklog install-service --no-report   # on every other machine
 
 **4. Open <http://worklog.localhost:8765>** and finish setup: pick a unique device name, set the data repo (paste `worklog-git:<you>/claude-worklog-data.git` and it is cloned for you), and add your first account. Then press **Install hook** for each account in Settings.
 
-**Settings → Private data repo** shows whether this folder is connected, to which repo (with a link), whether that repo is really private (checked with GitHub's public API for GitHub repos; a public repo is flagged on every page), when the last upload worked or why it failed, and how many changes are waiting. **Test connection** checks that this computer can reach the repo without a password prompt.
+**Settings → Private data repo** shows whether this folder is connected, to which repo (with a link), whether that repo is really private (checked with GitHub's public API for GitHub repos; a public repo is flagged on every page), when the last upload worked or why it failed, and how many changes are waiting. **Test connection** checks that this computer can reach the repo without a password prompt, and shows which account it signs in as (for example *Signs in as your-name* on GitHub). An SSH nickname such as `worklog-git` is looked up in `~/.ssh/config`, so the link and the privacy check use the real host, and Settings shows which key file is used.
+
+**Several GitHub accounts on one computer?** GitHub knows you by the SSH key, not by the account you're logged in to in the browser. The nickname in step 2 is what makes this work: only the data repo uses `~/.ssh/claude_worklog`, and your other repos keep your usual key. Add that key to the account that owns the data repo (or as a deploy key), point the data repo at the nickname, then click **Test connection**. If it says the key belongs to a different account, that account has no access to the repo. Settings → Private data repo → *Several GitHub accounts on this computer?* has the same steps with your own folder and repo filled in.
 
 Already started with a local-only repo from the quick start? Connect it with `git -C ~/claude-worklog-data remote add origin worklog-git:<you>/claude-worklog-data.git`. The next sync pushes to it.
 
@@ -170,7 +172,7 @@ The day page shows your tokens, sessions, projects and time, a 14-day chart, **W
 
 ## Updating
 
-When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade worklog-for-claude-code` always works. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
+When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
 
 ## Command line
 
