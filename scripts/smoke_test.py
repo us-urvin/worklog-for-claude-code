@@ -42,7 +42,9 @@ def fail(msg: str) -> None:
 
 
 def sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    """SHA-256 of a file's content. Line endings are normalised, because git on Windows checks out text files
+    with CRLF while the wheel is built with LF: same code, different bytes."""
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def check_contents(wheel: Path) -> str:
@@ -56,7 +58,7 @@ def check_contents(wheel: Path) -> str:
     changed = sorted(n for n in set(source) & set(packed) if source[n] != packed[n])
     if missing or extra or changed:
         fail(f"wheel differs from source: missing={missing} extra={extra} changed={changed}")
-    print(f"✓ {len(packed)} files, all identical to the source")
+    print(f"✓ {len(packed)} files, all identical to the source (SHA-256, line endings ignored)")
     version = wheel.name.split("-")[1]
     print(f"✓ version in the file name: {version}")
     return version
@@ -86,6 +88,11 @@ def get(port: int, path: str, host: str | None = None) -> tuple[int, str]:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # the Windows console may not be UTF-8; never crash on ✓ or ✗
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     if len(sys.argv) != 2 or not sys.argv[1].endswith(".whl"):
         fail("usage: python scripts/smoke_test.py path/to/worklog_for_claude_code-*.whl")
     wheel = Path(sys.argv[1]).resolve()

@@ -36,7 +36,7 @@ see it on PyPI: open the release, **Download files**, then **View details** next
 repository, the workflow and the commit.
 
 **2. The file holds exactly the source code of the tag.** Download it and compare it with the source of that
-tag, file by file (SHA-256):
+tag, file by file (SHA-256, ignoring Windows/Unix line endings):
 
 ```bash
 git clone --branch v0.5.2 https://github.com/us-urvin/worklog-for-claude-code && cd worklog-for-claude-code
