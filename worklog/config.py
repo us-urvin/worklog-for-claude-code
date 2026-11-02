@@ -74,6 +74,7 @@ summarizer_account = "personal"
 claude_bin = "claude"         # use an absolute path if running from cron
 model = ""                    # model for summaries: "opus", "sonnet", "haiku" or a full id; empty = account default
 ai_timeout_seconds = 180
+time = "active"               # hours on cards and timesheets: "active" (breaks over 15 min left out) or "wall"
 
 [chat]
 # claude.ai chat exports (Settings > Privacy > Export data). See the Sources page.
@@ -124,6 +125,7 @@ class Config:
     claude_bin: str = "claude"
     summary_model: str = ""  # passed to `claude -p --model`; empty = the account's default
     ai_timeout: int = 180
+    time_mode: str = "active"  # [report] time: "active" (breaks over 15 min don't count) or "wall"
     chat_account: str | None = None
     watch_downloads: bool = False
     downloads_dir: Path | None = None
@@ -300,6 +302,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         claude_bin=str(rep.get("claude_bin", "claude")),
         summary_model=_model(rep.get("model")),
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
+        time_mode="wall" if rep.get("time") == "wall" else "active",
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
@@ -359,7 +362,7 @@ def dump_config(cfg: Config) -> str:
             f"max_prompts_per_session = {cfg.max_prompts}", f"max_prompt_chars = {cfg.max_prompt_chars}", "",
             "[report]", f"use_ai = {b(cfg.use_ai)}", f"summarizer_account = {q(cfg.summarizer_account)}",
             f"claude_bin = {q(cfg.claude_bin)}", f"model = {q(cfg.summary_model)}",
-            f"ai_timeout_seconds = {cfg.ai_timeout}", "",
+            f"ai_timeout_seconds = {cfg.ai_timeout}", f"time = {q(cfg.time_mode)}", "",
             "[chat]", f"account = {q(cfg.chat_account or '')}", f"watch_downloads = {b(cfg.watch_downloads)}",
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
             f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",

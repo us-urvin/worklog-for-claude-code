@@ -168,3 +168,132 @@ def test_a_dotfiles_repo_in_home_never_claims_sessions(home):
     subprocess.run(["git", "init", "-q", str(home)], check=True)
     (home / "notes").mkdir()
     assert detect_project(_sd(home / "notes", dirs={str(home / "notes"): 3})) == (None, "", None, None)
+
+
+# ------------------------------------------------------------------ corrections (overrides)
+from worklog import overrides  # noqa: E402
+from worklog.report import aggregate, project_title  # noqa: E402
+from worklog.store import GitStore  # noqa: E402
+from worklog.tags import tag_session  # noqa: E402
+
+
+def _rec(sid, start, end, *, project, prompts=("go",), active=None, device="Office", files=(), tasks=None, **kw):
+    r = {"session_id": sid, "account": "work", "device": device, "project": project,
+         "start": f"2026-11-02T{start}:00+00:00", "end": f"2026-11-02T{end}:00+00:00",
+         "span_minutes": int((datetime.fromisoformat(f"2026-11-02T{end}") -
+                              datetime.fromisoformat(f"2026-11-02T{start}")).total_seconds() // 60),
+         "prompts": list(prompts), "files_touched": list(files), "tokens": {"input": 10}, **kw}
+    if active is not None:
+        r["active_minutes"] = active
+    if tasks is not None:
+        r["tasks"] = tasks
+    return r
+
+
+XOO = {"kind": "git", "name": "xoo-fix-qty", "remote": {"host": "github.com", "slug": "xoikospos/xoo"}}
+MISC = {"kind": "misc", "name": "R&D / misc", "path": "~/development", "folder": "development"}
+
+
+def test_worktree_cards_use_the_repo_name():
+    assert project_title(XOO) == "xoo" and project_title(MISC) == "R&D / misc"
+
+
+def test_newest_change_wins_across_devices_and_none_resets(repo):
+    store = GitStore(repo)
+    overrides.change(store, "Office", {"names": {"github.com/xoikospos/xoo": "Xoikos POS"}}, now=100)
+    overrides.change(store, "Home", {"names": {"github.com/xoikospos/xoo": "XOO"}}, now=200)
+    assert overrides.load(repo).names["github.com/xoikospos/xoo"] == "XOO"
+    overrides.change(store, "Office", {"names": {"github.com/xoikospos/xoo": None}}, now=300)  # Reset
+    assert "github.com/xoikospos/xoo" not in overrides.load(repo).names
+    overrides.change(store, "Home", {"tags": {"s1": "Review"}}, now=400)
+    overrides.change(store, "Office", {"tags": {"s1": "Docs"}}, now=400)  # same moment: device name decides
+    assert overrides.load(repo).tags["s1"] == "Docs"  # "Office" sorts after "Home", on every computer
+
+
+def test_rules_are_per_device_and_match_subfolders(repo):
+    store = GitStore(repo)
+    overrides.change(store, "Office", {"rules": {"~/development": "github.com/xoikospos/xoo"}})
+    ov = overrides.load(repo)
+    assert ov.rule_for("Office", "~/development") == "github.com/xoikospos/xoo"
+    assert ov.rule_for("Office", "~/development/scratch") == "github.com/xoikospos/xoo"
+    assert ov.rule_for("Office", "~/developments") is None
+    assert ov.rule_for("Home", "~/development") is None  # the same path may mean something else there
+
+
+def test_moves_rules_names_and_tags_apply_when_a_day_is_read(repo):
+    records = [
+        _rec("a", "09:00", "10:00", project=XOO, active=50, prompts=["implement qty field"], files=["app/qty.py"]),
+        _rec("b", "11:00", "11:40", project=MISC, active=40, prompts=["/code-review 505 with proper check"]),
+        _rec("c", "12:00", "12:30", project=dict(MISC, path="~/notes"), active=30, prompts=["plan the sprint"]),
+    ]
+    _, projects = aggregate(records)
+    assert set(projects) == {"github.com/xoikospos/xoo", "misc:R&D / misc"}
+    store = GitStore(repo)
+    overrides.change(store, "Office", {"rules": {"~/development": "github.com/xoikospos/xoo"},
+                                       "names": {"github.com/xoikospos/xoo": "Xoikos POS"},
+                                       "tags": {"c": "Planning"}})
+    _, projects = aggregate(records, overrides.load(repo))
+    xoo, misc = projects["github.com/xoikospos/xoo"], projects["misc:R&D / misc"]
+    assert xoo.name == "Xoikos POS" and xoo.sessions == 2 and xoo.moved and xoo.minutes == 90
+    assert xoo.tag_weights == {"Feature": 50, "Review": 40} and xoo.tag == "Feature"
+    assert misc.sessions == 1 and misc.tag == "Planning"
+    # a single session moved to a brand-new project
+    overrides.change(store, "Office", {"moves": {"c": "custom:sprint"},
+                                       "projects": {"custom:sprint": {"kind": "custom", "name": "Sprint planning",
+                                                                      "remote": None}}})
+    _, projects = aggregate(records, overrides.load(repo))
+    assert projects["custom:sprint"].name == "Sprint planning" and "misc:R&D / misc" not in projects
+
+
+def test_rules_never_refile_sessions_that_found_a_repo(repo):
+    overrides.change(GitStore(repo), "Office", {"rules": {"~/development": "custom:x"}})
+    rec = _rec("a", "09:00", "10:00", project=dict(XOO, path="~/development/xoo"), active=60)
+    _, projects = aggregate([rec], overrides.load(repo))
+    assert list(projects) == ["github.com/xoikospos/xoo"]
+
+
+def test_time_is_active_and_overlaps_count_once():
+    recs = [_rec("a", "09:00", "11:00", project=XOO, active=60),  # two windows open at the same time
+            _rec("b", "09:30", "10:30", project=XOO, active=50)]
+    _, p = aggregate(recs)
+    assert p["github.com/xoikospos/xoo"].minutes == 110  # 60 + 50 active, under the 120 wall minutes
+    _, p = aggregate(recs, time_mode="wall")
+    assert p["github.com/xoikospos/xoo"].minutes == 120  # 180 minutes of windows, but 9:00-11:00 is 120
+    old = [_rec("a", "09:00", "10:00", project=XOO)]  # before 0.4.0: no active time recorded
+    _, p = aggregate(old)
+    assert p["github.com/xoikospos/xoo"].minutes == 60 and p["github.com/xoikospos/xoo"].approx
+
+
+def test_old_records_lose_system_noise_and_tasks_merge():
+    recs = [_rec("a", "09:00", "10:00", project=XOO, prompts=["<task-notification>\n<status>x", "fix the qty bug"],
+                 tasks=[{"text": "Review PR #503", "status": "done"}, {"text": "Ask Priti", "status": "open"}]),
+            _rec("b", "10:00", "11:00", project=XOO, tasks=[{"text": "Ask Priti", "status": "open"}])]
+    _, p = aggregate(recs)
+    x = p["github.com/xoikospos/xoo"]
+    assert [q for _, q in x.prompts] == ["fix the qty bug", "go"]
+    assert x.tasks == [{"text": "Review PR #503", "status": "done"}, {"text": "Ask Priti", "status": "open"}]
+
+
+def test_guess_is_offered_until_answered(repo):
+    guess = {"path": "~/development/xoo", "name": "xoo", "remote": XOO["remote"], "why": "it worked in xoo and api"}
+    rec = _rec("b", "11:00", "11:40", project=dict(MISC, guess=guess), active=40)
+    _, p = aggregate([rec])
+    assert p["misc:R&D / misc"].guess["name"] == "xoo" and p["misc:R&D / misc"].guess["sessions"] == ["b"]
+    overrides.change(GitStore(repo), "Office", {"noguess": {"b": True}})
+    _, p = aggregate([rec], overrides.load(repo))
+    assert p["misc:R&D / misc"].guess is None
+
+
+# ------------------------------------------------------------------ tags
+def test_tag_rules():
+    t = lambda prompts, files=(), **kw: tag_session({"prompts": list(prompts), "files_touched": list(files), **kw})  # noqa: E731
+    assert t(["/code-review 503 with proper check all conversation"]) == "Review"
+    assert t(["fix the failing windows test"], ["worklog/locks.py"]) == "Bug fix"
+    assert t(["update the guide"], ["README.md", "docs/GUIDE.md"]) == "Docs"
+    assert t(["add tests"], ["tests/test_a.py", "tests/test_b.py"]) == "Tests"
+    assert t(["release 0.3.2 and write the changelog"]) == "Release"
+    assert t(["how does the watcher work?"]) == "Research"
+    assert t(["make a plan for the timesheet"]) == "Planning"
+    assert t(["add a timesheet page"], ["worklog/web.py"]) == "Feature"
+    assert t(["refactor the parser"], ["worklog/parser.py"]) == "Refactor"
+    assert tag_session({"source": "claude.ai"}) == "Chat"

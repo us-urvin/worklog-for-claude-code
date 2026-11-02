@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from . import __version__, chats, checks, forget, services, syncstatus, updates, viz, watcher
+from . import __version__, chats, checks, forget, overrides, services, syncstatus, updates, viz, watcher
 from .collector import collect
 from .config import (
     _NAME_RE,
@@ -627,8 +627,10 @@ def page_day(app: App, cfg: Config, day: date) -> tuple[str, str | None]:
         return (f'<div class="empty">No data repo found at <code>{e(home_relative(cfg.store_repo))}</code>. '
                 f'<a href="/settings">Set it up in Settings</a>.</div>'), None
     records = list(store.iter_json(f"records/{day.isoformat()}"))
-    accounts, projects = aggregate(records)
-    saved = load_saved_summaries(store, day).get("summaries", {})
+    ov = overrides.load(store.path)
+    accounts, projects = aggregate(records, ov, cfg.time_mode)
+    saved_meta = load_saved_summaries(store, day)
+    saved = saved_meta.get("summaries", {})
 
     history_days = [day - timedelta(days=i) for i in reversed(range(HISTORY_DAYS))]
     history, names = [], [a.name for a in cfg.accounts]

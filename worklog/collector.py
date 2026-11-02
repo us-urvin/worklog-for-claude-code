@@ -73,7 +73,8 @@ def detect_project(sd: SessionDay) -> tuple[Path | None, str, dict | None, str |
         if len(ranked) == 1 or ranked[0][1] >= 2 * ranked[1][1]:
             return ranked[0][0], "commands", None, None
         top = ranked[0][0]
-        return None, "", {"path": _home_relative(top), "name": top.name,
+        remote = sanitize_remote(_git(top, "remote", "get-url", "origin") or "")
+        return None, "", {"path": _home_relative(top), "name": top.name, "remote": remote,
                           "why": f"it worked in {top.name} and {ranked[1][0].name}"}, None
     if sd.repo_slugs:
         slugs = sd.repo_slugs.most_common(2)

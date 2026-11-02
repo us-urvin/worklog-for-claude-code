@@ -7,13 +7,17 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from . import overrides
 from .config import DEFAULT_CLAUDE_DIR, SUMMARIZER_CWD, Config
-from .parser import zero_tokens
+from .overrides import Overrides
+from .parser import is_noise, zero_tokens
 from .redact import redact
 from .store import GitStore
+from .tags import tag_session, top_tag
 
 log = logging.getLogger(__name__)
 _MAX_AI_INPUT_CHARS = 24_000  # keep each summary call small and well below arg-size limits
@@ -23,6 +27,38 @@ def project_key(proj: dict) -> str:
     """Same repo on two machines (different paths) merges via its remote slug."""
     remote = proj.get("remote")
     return f"{remote['host']}/{remote['slug']}" if remote else f"{proj.get('kind')}:{proj.get('name')}"
+
+
+def project_title(proj: dict) -> str:
+    """The name on a card: the repo's own name when it has a remote, so a worktree folder
+    ("xoo-fix-qty") still shows as "xoo"; else the folder or label."""
+    remote = proj.get("remote")
+    if isinstance(remote, dict) and remote.get("slug"):
+        return str(remote["slug"]).rsplit("/", 1)[-1]
+    return str(proj.get("name") or "?")
+
+
+def _interval(r: dict) -> tuple[float, float] | None:
+    try:
+        a = datetime.fromisoformat(str(r.get("start"))).timestamp()
+        b = datetime.fromisoformat(str(r.get("end"))).timestamp()
+    except ValueError:
+        return None
+    return (a, b) if b >= a else None
+
+
+def _union_minutes(spans: list[tuple[float, float]]) -> float:
+    total, cur = 0.0, None
+    for a, b in sorted(spans):
+        if cur and a <= cur[1]:
+            cur = (cur[0], max(cur[1], b))
+        else:
+            if cur:
+                total += cur[1] - cur[0]
+            cur = (a, b)
+    if cur:
+        total += cur[1] - cur[0]
+    return total / 60
 
 
 _MODEL_RE = re.compile(r"^claude-(?:(?P<a>opus|sonnet|haiku|fable)-(?P<v1>\d+(?:-\d)?)"
@@ -72,6 +108,18 @@ class ProjectDay:
     chats: int = 0  # claude.ai chat records (no token data)
     titles: list[str] = field(default_factory=list)  # chat titles, in order seen
     chat_items: list[dict] = field(default_factory=list)  # one per chat: start, title, prompts, summary
+    wall_minutes: int = 0  # first to last message, overlapping sessions counted once
+    approx: bool = False  # some records predate active time: minutes are first-to-last
+    tag_weights: Counter = field(default_factory=Counter)  # tag -> minutes
+    tasks: list[dict] = field(default_factory=list)  # Claude's to-do items: text, status
+    sessions_list: list[dict] = field(default_factory=list)  # for "Edit": id, start, first prompt, minutes
+    started_in: set[str] = field(default_factory=set)  # home-relative folders the misc sessions started in
+    guess: dict | None = None  # "Probably xoo?" for sessions that found no repo
+    moved: bool = False  # sessions were moved here or a rule applied
+
+    @property
+    def tag(self) -> str | None:
+        return top_tag(self.tag_weights)
 
 
 def is_chat(r: dict) -> bool:
@@ -99,10 +147,35 @@ def _add(dst: dict[str, int], src: object) -> None:
         dst[k] += v if isinstance(v, int) else 0
 
 
-def aggregate(records: list[dict]):
+def _target(key: str, ov: Overrides, known: dict[str, dict]) -> dict:
+    """What we know about the project a session is moved to."""
+    if key in known:
+        return known[key]
+    if key in ov.projects:
+        return ov.projects[key]
+    if "/" in key and ":" not in key.split("/", 1)[0]:  # host/owner/repo
+        host, slug = key.split("/", 1)
+        return {"kind": "git", "name": slug.rsplit("/", 1)[-1], "remote": {"host": host, "slug": slug}}
+    kind, _, name = key.partition(":")
+    return {"kind": kind or "git", "name": name or key, "remote": None}
+
+
+def aggregate(records: list[dict], ov: Overrides | None = None, time_mode: str = "active"):
+    """Per-account and per-project totals for one day. `ov` applies your corrections (renames, moves,
+    folder rules, tags). `time_mode` "active" counts time with messages at most 15 minutes apart;
+    "wall" counts first to last message."""
+    ov = ov or Overrides()
     accounts: dict[str, dict] = {}
     projects: dict[str, ProjectDay] = {}
-    for r in _dedupe_chats(records):
+    records = _dedupe_chats(records)
+    known = {}
+    for r in records:
+        proj = r.get("project") or {}
+        known.setdefault(project_key(proj), {"kind": proj.get("kind"), "name": proj.get("name"),
+                                             "remote": proj.get("remote")})
+    spans: dict[str, list[tuple[float, float]]] = {}
+    active: dict[str, float] = {}
+    for r in records:
         acct = accounts.setdefault(r.get("account", "?"), {
             "tokens": zero_tokens(), "sessions": 0, "chats": 0, "devices": set(), "models": {}, "models_sub": {}})
         _add(acct["tokens"], r.get("tokens"))
@@ -117,9 +190,19 @@ def aggregate(records: list[dict]):
             _add(acct["models_sub"].setdefault(model, zero_tokens()), t)
 
         proj = r.get("project") or {}
+        sid = str(r.get("session_id") or "")
         key = project_key(proj)
-        p = projects.setdefault(key, ProjectDay(key, str(proj.get("name", "?")), str(proj.get("kind")),
-                                                proj.get("remote")))
+        moved_to = ov.moves.get(sid) if sid else None
+        if moved_to is None and proj.get("kind") == "misc":
+            moved_to = ov.rule_for(str(r.get("device", "")), proj.get("started_in") or proj.get("path"))
+        info = proj
+        if moved_to and moved_to != key:
+            key, info = moved_to, _target(moved_to, ov, known)
+        p = projects.get(key)
+        if p is None:
+            p = projects[key] = ProjectDay(key, ov.names.get(key) or project_title(info), str(info.get("kind")),
+                                           info.get("remote"))
+        p.moved = p.moved or bool(moved_to)
         p.accounts.add(r.get("account", "?"))
         p.devices.add(r.get("device", "?"))
         if is_chat(r):
@@ -131,19 +214,48 @@ def aggregate(records: list[dict]):
                                  "summary": str(r.get("summary") or "")})
         else:
             p.sessions += 1
-        p.minutes += int(r.get("span_minutes") or 0)
+        span = int(r.get("span_minutes") or 0)
+        act = r.get("active_minutes")
+        if not isinstance(act, int) or isinstance(act, bool):
+            act, p.approx = span, p.approx or not is_chat(r)
+        iv = _interval(r)
+        if iv:
+            spans.setdefault(key, []).append(iv)
+        active[key] = active.get(key, 0) + (span if time_mode == "wall" else act)
         _add(p.tokens, r.get("tokens"))
         start = (r.get("start") or "")[11:16]
-        p.prompts.extend((start, q) for q in r.get("prompts") or [])
+        prompts = [q for q in r.get("prompts") or [] if isinstance(q, str) and not is_noise(q)]
+        p.prompts.extend((start, q) for q in prompts)
         p.files.update(r.get("files_touched") or [])
         p.branches.update(proj.get("branches") or [])
         if proj.get("folder"):
             p.folders.add(proj["folder"])
+        if proj.get("kind") == "misc" and (proj.get("started_in") or proj.get("path")):
+            p.started_in.add(str(proj.get("started_in") or proj.get("path")))
+        if proj.get("guess") and not moved_to and not ov.noguess.get(sid) and p.guess is None:
+            p.guess = dict(proj["guess"], sessions=[])
+        if p.guess is not None and proj.get("guess") and not moved_to and not ov.noguess.get(sid):
+            p.guess["sessions"].append(sid)
         for c in r.get("commits") or []:
             p.commits.setdefault(c.get("hash", ""), c.get("subject", ""))
-    for p in projects.values():
+        tag = ov.tags.get(sid) or tag_session(dict(r, prompts=prompts))
+        p.tag_weights[tag] += max(1, act)
+        for t in r.get("tasks") or []:
+            if isinstance(t, dict) and t.get("text") and not any(x["text"] == t["text"] for x in p.tasks):
+                p.tasks.append({"text": str(t["text"]), "status": "done" if t.get("status") == "done" else "open"})
+        if sid:
+            p.sessions_list.append({"id": sid, "start": start, "minutes": act, "account": r.get("account", "?"),
+                                    "first": prompts[0].splitlines()[0][:120] if prompts else "",
+                                    "chat": is_chat(r)})
+    for key, p in projects.items():
+        wall = _union_minutes(spans.get(key, []))
+        p.wall_minutes = round(wall) if spans.get(key) else 0
+        total = active.get(key, 0)
+        # Two sessions at the same time are one stretch of your time, not two.
+        p.minutes = round(min(total, wall)) if spans.get(key) and wall else round(total)
         p.prompts.sort()
         p.chat_items.sort(key=lambda c: c["start"])
+        p.sessions_list.sort(key=lambda x: x["start"])
     return accounts, projects
 
 
@@ -299,7 +411,8 @@ def build_report(cfg: Config, day: date, use_ai: bool, write: bool) -> tuple[str
     with store.lock():  # short lock: sync + read only
         store.pull()
         records = list(store.iter_json(f"records/{day.isoformat()}"))
-    accounts, projects = aggregate(records)
+        ov = overrides.load(store.path)
+    accounts, projects = aggregate(records, ov, cfg.time_mode)
     summaries = summarize_all(projects, day, cfg, use_ai)  # AI calls run without the lock
     text = render(day, cfg, accounts, projects, summaries)
     if not write:
