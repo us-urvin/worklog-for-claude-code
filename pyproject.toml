@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 # Distribution name on PyPI. The command stays `claude-worklog` and the package stays `worklog`.
 name = "worklog-for-claude-code"
 version = "0.5.2"
-description = "See what you did with Claude Code each day and how many tokens it used: an automatic daily work log across accounts and devices, private by default"
+description = "Claude Code usage tracker and daily work log: tokens, cost and hours per project, a timesheet and plain-language summaries, across accounts and computers. Private by default."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Urvin" }]
-keywords = ["claude-code", "claude", "claude-ai", "anthropic", "worklog", "time-tracking", "token-usage", "token-tracker", "usage-tracker", "standup", "developer-tools", "daily-report", "productivity"]
+keywords = ["claude-code", "claude", "claude-ai", "anthropic", "worklog", "work-log", "time-tracking", "timesheet", "token-usage", "token-tracker", "usage-tracker", "cost-tracking", "claude-code-usage", "standup", "developer-tools", "daily-report", "productivity", "ai-coding"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

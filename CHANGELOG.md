@@ -22,6 +22,16 @@ Trust release: no new features, more proof that the package is what it says.
   security headers and runs only its own scripts, and HTML or JavaScript hidden in project names, prompts, file
   names or searches is shown as text, never run.
 - README: "a personal log, not a performance score", and a link to verify releases.
+- **Website** at https://us-urvin.github.io/worklog-for-claude-code/ (published from `site/` by GitHub Pages), with
+  proper search-engine details: title, description, preview image, structured data and a sitemap.
+- **OpenSSF Scorecard**: an independent weekly check of the repository's security practices, shown as a badge.
+- README and PyPI summary now say plainly what it is: a Claude Code usage tracker and daily work log, with tokens,
+  cost and hours per project.
+
+### Changed
+- Every GitHub Action in CI, release and the website is pinned to an exact commit (with its version in a comment),
+  so a changed or compromised action can't slip into a release. Dependabot keeps the pins up to date.
+- New preview image for links to the repository and website.
 
 ## [0.5.1] - 2026-11-02
 

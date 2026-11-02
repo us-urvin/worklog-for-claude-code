@@ -2,11 +2,17 @@
 
 **Your Claude Code work, written down for you: what you did each day, how long it took, and what it used.**
 
+A free, open-source **Claude Code usage tracker** and **daily work log**: tokens, cost and hours **per project**, a timesheet, and plain-language summaries of what you did, across all your Claude accounts and computers. It runs on your computer and keeps your data in your own private git repo.
+
 [![Downloads](https://static.pepy.tech/badge/worklog-for-claude-code)](https://pepy.tech/project/worklog-for-claude-code)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
 [![GitHub stars](https://img.shields.io/github/stars/us-urvin/worklog-for-claude-code?style=flat)](https://github.com/us-urvin/worklog-for-claude-code/stargazers)
 [![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/us-urvin/worklog-for-claude-code/badge)](https://scorecard.dev/viewer/?uri=github.com/us-urvin/worklog-for-claude-code)
+[![Signed releases](https://img.shields.io/badge/releases-signed%20%26%20verified-brightgreen)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release)
+
+🌐 **[Website](https://us-urvin.github.io/worklog-for-claude-code/)** · 📦 **[PyPI](https://pypi.org/project/worklog-for-claude-code/)**
 
 ![A tour of Worklog: today, project summaries, editing a project, trends, ask, timesheet and a share card](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
 

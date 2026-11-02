@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worklog for Claude Code: usage tracker and daily work log</title>
+<meta name="description" content="Free, open-source Claude Code usage tracker: tokens, cost and hours per project, what you did each day in plain words, and a timesheet. Private by design.">
+<link rel="canonical" href="https://us-urvin.github.io/worklog-for-claude-code/">
+<meta name="robots" content="index,follow">
+<meta name="theme-color" content="#0A0D24">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Worklog for Claude Code">
+<meta property="og:title" content="Worklog for Claude Code: your Claude Code work, written down for you">
+<meta property="og:description" content="Free, open-source Claude Code usage tracker: tokens, cost and hours per project, daily summaries in plain words, a timesheet and trends. Runs on your computer.">
+<meta property="og:url" content="https://us-urvin.github.io/worklog-for-claude-code/">
+<meta property="og:image" content="https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Worklog for Claude Code: a dashboard of today's Claude Code projects, tokens and hours">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Worklog for Claude Code">
+<meta name="twitter:description" content="Free Claude Code usage tracker and daily work log: tokens, cost and hours per project, in plain words.">
+<meta name="twitter:image" content="https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"SoftwareApplication","name":"Worklog for Claude Code","alternateName":"claude-worklog",
+ "applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows",
+ "description":"Free, open-source Claude Code usage tracker and daily work log: tokens, cost and hours per project, plain-language summaries, a timesheet and trends, across Claude accounts and computers.",
+ "url":"https://us-urvin.github.io/worklog-for-claude-code/","downloadUrl":"https://pypi.org/project/worklog-for-claude-code/",
+ "softwareHelp":"https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md",
+ "codeRepository":"https://github.com/us-urvin/worklog-for-claude-code","license":"https://opensource.org/licenses/MIT",
+ "author":{"@type":"Person","name":"Urvin","url":"https://github.com/us-urvin"},
+ "image":"https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png",
+ "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}},
+{"@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"How do I see Claude Code token usage per project?","acceptedAnswer":{"@type":"Answer","text":"Install Worklog with pipx install worklog-for-claude-code and open its dashboard. Every project gets a card with its tokens, cost at API prices, active hours and what you did, read from Claude Code's own session logs on your computer."}},
+ {"@type":"Question","name":"Does Worklog send my code anywhere?","acceptedAnswer":{"@type":"Answer","text":"No. It never saves your files or Claude's replies. It keeps short notes (the start of your prompts, token counts, file names, commit messages) on your computer and in a private git repo you choose. Common secrets are blanked out first. AI summaries are optional and use your own Claude account."}},
+ {"@type":"Question","name":"Does it work with several Claude accounts and computers?","acceptedAnswer":{"@type":"Answer","text":"Yes. It tells accounts apart, even with one-click account switchers, and combines several computers through your private git repo."}},
+ {"@type":"Question","name":"Is Worklog for Claude Code free?","acceptedAnswer":{"@type":"Answer","text":"Yes. It is open source under the MIT licence and needs only Python 3.10 or newer and git."}},
+ {"@type":"Question","name":"How is it different from ccusage and other usage trackers?","acceptedAnswer":{"@type":"Answer","text":"Token and cost reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools."}}]}]}
+</script>
+<style>
+:root{--bg:#0A0D24;--panel:rgba(255,255,255,.06);--rule:rgba(255,255,255,.14);--ink:#EEF2FF;--muted:#A3AECB;--a:#7C5CFF;--b:#22D3EE;--warm:#F59E0B}
+@media (prefers-color-scheme:light){:root{--bg:#F6F7FE;--panel:#FFFFFF;--rule:#DDE1F2;--ink:#151935;--muted:#545C7A;--a:#5B3DF5;--b:#0891B2}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font:17px/1.6 Inter,"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg)}
+body:before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(800px 500px at 0 0,color-mix(in srgb,var(--a) 35%,transparent),transparent 70%),radial-gradient(700px 500px at 100% 100%,color-mix(in srgb,var(--b) 25%,transparent),transparent 70%)}
+a{color:var(--b)}img{max-width:100%;height:auto;display:block}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 0;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--ink);text-decoration:none}.brand img{width:32px;height:32px}
+nav a{color:var(--muted);text-decoration:none;margin-left:18px;font-weight:600;font-size:.95rem}nav a:hover{color:var(--ink)}
+.hero>*,.grid>*,.steps>*,ul.trust>li{min-width:0}.step code{overflow-wrap:anywhere}
+.hero{display:grid;grid-template-columns:1.05fr 1fr;gap:40px;align-items:center;padding:40px 0 30px}
+h1{font-size:clamp(2.1rem,4.6vw,3.4rem);line-height:1.08;margin:0 0 16px;letter-spacing:-.02em}
+.grad{background:linear-gradient(90deg,var(--a),var(--b));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:1.15rem;color:var(--muted);margin:0 0 22px}
+.cmd{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:12px 14px;font:600 .95rem ui-monospace,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.cmd span{color:var(--muted);user-select:none}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.btn{display:inline-block;padding:11px 18px;border-radius:12px;font-weight:700;text-decoration:none;border:1px solid var(--rule);color:var(--ink);background:var(--panel)}
+.btn.main{background:linear-gradient(135deg,var(--a),var(--b));color:#fff;border:0}
+.shot{border-radius:18px;border:1px solid var(--rule);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px}.badges img{height:20px;width:auto;display:inline}
+section{padding:44px 0}h2{font-size:clamp(1.5rem,3vw,2.1rem);margin:0 0 10px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 26px;max-width:720px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px}
+.card h3{margin:0;font-size:1.2rem}.card p{margin:0;color:var(--muted)}.card img{border-radius:12px;border:1px solid var(--rule)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:s}
+.step{background:var(--panel);border:1px solid var(--rule);border-radius:18px;padding:20px}
+.step:before{counter-increment:s;content:counter(s);display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff;font-weight:800;margin-bottom:8px}
+.step h3{margin:0 0 6px}.step p{margin:0;color:var(--muted)}.step code{font-size:.85rem}
+ul.trust{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+ul.trust li{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:14px 16px}
+details{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:14px 18px;margin-bottom:10px}
+summary{font-weight:700;cursor:pointer}details p{color:var(--muted);margin:10px 0 0}
+footer{border-top:1px solid var(--rule);padding:26px 0 40px;color:var(--muted);font-size:.9rem}
+code{font-family:ui-monospace,Menlo,Consolas,monospace}
+@media (max-width:860px){.hero,.grid,ul.trust,.steps{grid-template-columns:1fr}.hero{padding-top:16px}nav{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <a class="brand" href="./"><img src="favicon.svg" alt="" width="32" height="32">Worklog for Claude Code</a>
+  <nav><a href="#features">Features</a><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="#faq">FAQ</a><a href="https://github.com/us-urvin/worklog-for-claude-code">GitHub</a></nav>
+</header>
+
+<main>
+<div class="hero">
+  <div>
+    <h1>Claude Code usage tracker and <span class="grad">daily work log</span></h1>
+    <p class="lead">See what you did with Claude Code each day, in plain words, with <b>tokens, cost and hours per project</b>. Free, open source, and private: it runs on your computer and keeps your data in your own git repo.</p>
+    <div class="cmd"><span>$</span>pipx install worklog-for-claude-code</div>
+    <div class="btns">
+      <a class="btn main" href="https://github.com/us-urvin/worklog-for-claude-code#install-in-3-steps">Install in 3 steps</a>
+      <a class="btn" href="#try">Try the demo</a>
+      <a class="btn" href="https://github.com/us-urvin/worklog-for-claude-code">⭐ Star on GitHub</a>
+    </div>
+    <div class="badges">
+      <img src="https://img.shields.io/pypi/v/worklog-for-claude-code" alt="PyPI version" loading="lazy">
+      <img src="https://static.pepy.tech/badge/worklog-for-claude-code" alt="Downloads" loading="lazy">
+      <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT licence" loading="lazy">
+      <img src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-informational" alt="Runs on Linux, macOS and Windows" loading="lazy">
+    </div>
+  </div>
+  <img class="shot" src="images/day.png" width="1280" height="900" alt="Worklog dashboard: today's Claude Code tokens, sessions, projects and hours, with a 14-day chart">
+</div>
+
+<section id="features" aria-labelledby="f-h">
+  <h2 id="f-h">Everything you did with Claude Code, without writing it down</h2>
+  <p class="sub">Worklog reads Claude Code's own session logs on your computer and turns them into a work log you can read, search and share.</p>
+  <div class="grid">
+    <article class="card"><h3>✍️ Every project, in plain words</h3><p>One card per project with a short summary, the kind of work, pull requests and tasks. Claude writes the summary with your own account, or skip AI and keep it fully local.</p><img src="images/card.png" width="688" height="576" alt="A project card with a plain-language summary, PR links and a task list" loading="lazy"></article>
+    <article class="card"><h3>📊 Token usage and cost per project</h3><p>Tokens by account and model, active hours, and the cost at API prices for every project and day. See which work uses your Pro or Max limits.</p><img src="images/trends.png" width="1112" height="646" alt="Trends: hours, sessions, tokens and cost compared with last week" loading="lazy"></article>
+    <article class="card"><h3>🔎 Ask your worklog</h3><p>"When did I review PR 505?" Search forgives typos and finds the day. Tick <b>Ask Claude</b> for a short written answer with links.</p><img src="images/ask.png" width="1112" height="567" alt="Ask your worklog: a question answered from saved notes" loading="lazy"></article>
+    <article class="card"><h3>🧾 A timesheet, ready for Excel</h3><p>Hours, kind of work and one line per project and day. Download it as Excel or CSV for your client or manager.</p><img src="images/timesheet.png" width="1112" height="801" alt="Timesheet with hours and a summary line per day and project" loading="lazy"></article>
+    <article class="card"><h3>📍 Where you left off</h3><p>Your last projects, open tasks, branch, PRs and tickets at the top of the page, so mornings start fast.</p><img src="images/leaveoff.png" width="1112" height="317" alt="Where you left off: last projects with open tasks and branches" loading="lazy"></article>
+    <article class="card"><h3>🖼️ Share your week</h3><p>A card for a day, week, month or year, wide or square. One click opens LinkedIn or X with the post written. Totals only, never prompts or files.</p><img src="images/share-card.jpg" width="1200" height="630" alt="A share card: 23 hours of focused work with Claude in a week, with a bar chart" loading="lazy"></article>
+  </div>
+</section>
+
+<section id="how" aria-labelledby="h-h">
+  <h2 id="h-h">How it works</h2>
+  <p class="sub">You need Python 3.10+, git and Claude Code. Linux, macOS and Windows.</p>
+  <div class="steps">
+    <div class="step"><h3>Install</h3><p><code>pipx install worklog-for-claude-code</code></p></div>
+    <div class="step"><h3>Make a private folder for your log</h3><p><code>git init ~/claude-worklog-data</code><br><code>claude-worklog install-service</code></p></div>
+    <div class="step"><h3>Open the dashboard</h3><p><a href="http://localhost:8765">localhost:8765</a>, fill in the short form, then use Claude Code as usual. A checklist shows anything still missing.</p></div>
+  </div>
+  <p id="try" style="margin-top:22px"><b>Just looking?</b> Try it on made-up data, with nothing installed: <code>pipx run --spec worklog-for-claude-code claude-worklog demo</code>, then open <code>localhost:8766</code>.</p>
+</section>
+
+<section id="privacy" aria-labelledby="p-h">
+  <h2 id="p-h">Private by design</h2>
+  <ul class="trust">
+    <li>🔒 <b>Never your code.</b> Only short notes: the start of your prompts, token counts, file names and commit messages. Never your files or Claude's replies.</li>
+    <li>🧹 <b>Secrets blanked out</b> before saving: API keys, tokens, passwords, e-mails.</li>
+    <li>🏠 <b>Your computer, your git repo.</b> No telemetry, no account, no server run by this project.</li>
+    <li>✅ <b>Signed releases.</b> Every release is built and signed by GitHub and tested on three systems. <a href="https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release">Verify a release</a>.</li>
+    <li>📏 <b>A personal log, not a performance score.</b> Hours are your active time with Claude, not a measure of your output.</li>
+    <li>🧩 <b>No dependencies</b> outside Python's standard library, and the full source is on GitHub.</li>
+  </ul>
+</section>
+
+<section id="faq" aria-labelledby="q-h">
+  <h2 id="q-h">Questions</h2>
+  <details><summary>How do I see Claude Code token usage per project?</summary><p>Install Worklog and open its dashboard. Every project gets a card with its tokens, cost at API prices, active hours and what you did, read from Claude Code's own session logs on your computer.</p></details>
+  <details><summary>Does Worklog send my code anywhere?</summary><p>No. It never saves your files or Claude's replies. Notes stay on your computer and in a private git repo you choose. AI summaries are optional and use your own Claude account; turn them off to stay fully offline.</p></details>
+  <details><summary>Does it work with several Claude accounts and computers?</summary><p>Yes. It tells accounts apart, even with one-click account switchers, and combines several computers through your private git repo.</p></details>
+  <details><summary>Can I see it on my phone?</summary><p>Yes: turn on the phone summary on one computer and open your data repo's <code>phone</code> folder in the GitHub app. It stays private.</p></details>
+  <details><summary>How is it different from ccusage and other usage trackers?</summary><p>Token and cost reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools.</p></details>
+  <details><summary>Is it free?</summary><p>Yes. It's open source under the MIT licence.</p></details>
+</section>
+</main>
+
+<footer>
+  <p><a href="https://github.com/us-urvin/worklog-for-claude-code">GitHub</a> · <a href="https://pypi.org/project/worklog-for-claude-code/">PyPI</a> · <a href="https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md">Guide</a> · <a href="https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/us-urvin/worklog-for-claude-code/issues/new/choose">Report a bug</a></p>
+  <p>Made by <a href="https://github.com/us-urvin">Urvin</a>. MIT licence. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic.</p>
+</footer>
+</div>
+</body>
+</html>
