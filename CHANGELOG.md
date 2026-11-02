@@ -25,8 +25,12 @@ Trust release: no new features, more proof that the package is what it says.
 - **Website** at https://us-urvin.github.io/worklog-for-claude-code/ (published from `site/` by GitHub Pages), with
   proper search-engine details: title, description, preview image, structured data and a sitemap.
 - **OpenSSF Scorecard**: an independent weekly check of the repository's security practices, shown as a badge.
-- README and PyPI summary now say plainly what it is: a Claude Code usage tracker and daily work log, with tokens,
-  cost and hours per project.
+- README and PyPI summary now say plainly what it is: a Claude Code usage tracker and daily work log, with tokens
+  and hours per project.
+
+### Removed
+- **Cost estimates** ("At API prices" on cards, Trends and the year review, and the `[cost]` config section).
+  Worklog shows tokens and time only. An old `[cost]` section in your config is ignored.
 
 ### Changed
 - Every GitHub Action in CI, release and the website is pinned to an exact commit (with its version in a comment),

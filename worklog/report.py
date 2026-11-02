@@ -133,7 +133,7 @@ class ProjectDay:
     refs: list[str] = field(default_factory=list)  # PR and ticket numbers
     tests: Counter = field(default_factory=Counter)  # runs, failed, fixed
     claude_minutes: int = 0
-    models: dict[str, dict[str, int]] = field(default_factory=dict)  # tokens per model, for the cost estimate
+    models: dict[str, dict[str, int]] = field(default_factory=dict)  # tokens per model
 
     @property
     def tag(self) -> str | None:

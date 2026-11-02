@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Worklog for Claude Code: usage tracker and daily work log</title>
-<meta name="description" content="Free, open-source Claude Code usage tracker: tokens, cost and hours per project, what you did each day in plain words, and a timesheet. Private by design.">
+<meta name="description" content="Free, open-source Claude Code usage tracker: tokens and hours per project, what you did each day in plain words, and a timesheet. Private by design.">
 <link rel="canonical" href="https://us-urvin.github.io/worklog-for-claude-code/">
 <meta name="robots" content="index,follow">
 <meta name="theme-color" content="#0A0D24">
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Worklog for Claude Code">
 <meta property="og:title" content="Worklog for Claude Code: your Claude Code work, written down for you">
-<meta property="og:description" content="Free, open-source Claude Code usage tracker: tokens, cost and hours per project, daily summaries in plain words, a timesheet and trends. Runs on your computer.">
+<meta property="og:description" content="Free, open-source Claude Code usage tracker: tokens and hours per project, daily summaries in plain words, a timesheet and trends. Runs on your computer.">
 <meta property="og:url" content="https://us-urvin.github.io/worklog-for-claude-code/">
 <meta property="og:image" content="https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -20,13 +20,13 @@
 <meta property="og:image:alt" content="Worklog for Claude Code: a dashboard of today's Claude Code projects, tokens and hours">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Worklog for Claude Code">
-<meta name="twitter:description" content="Free Claude Code usage tracker and daily work log: tokens, cost and hours per project, in plain words.">
+<meta name="twitter:description" content="Free Claude Code usage tracker and daily work log: tokens and hours per project, in plain words.">
 <meta name="twitter:image" content="https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
 {"@type":"SoftwareApplication","name":"Worklog for Claude Code","alternateName":"claude-worklog",
  "applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows",
- "description":"Free, open-source Claude Code usage tracker and daily work log: tokens, cost and hours per project, plain-language summaries, a timesheet and trends, across Claude accounts and computers.",
+ "description":"Free, open-source Claude Code usage tracker and daily work log: tokens and hours per project, plain-language summaries, a timesheet and trends, across Claude accounts and computers.",
  "url":"https://us-urvin.github.io/worklog-for-claude-code/","downloadUrl":"https://pypi.org/project/worklog-for-claude-code/",
  "softwareHelp":"https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md",
  "codeRepository":"https://github.com/us-urvin/worklog-for-claude-code","license":"https://opensource.org/licenses/MIT",
@@ -34,11 +34,11 @@
  "image":"https://us-urvin.github.io/worklog-for-claude-code/images/social-preview.png",
  "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}},
 {"@type":"FAQPage","mainEntity":[
- {"@type":"Question","name":"How do I see Claude Code token usage per project?","acceptedAnswer":{"@type":"Answer","text":"Install Worklog with pipx install worklog-for-claude-code and open its dashboard. Every project gets a card with its tokens, cost at API prices, active hours and what you did, read from Claude Code's own session logs on your computer."}},
+ {"@type":"Question","name":"How do I see Claude Code token usage per project?","acceptedAnswer":{"@type":"Answer","text":"Install Worklog with pipx install worklog-for-claude-code and open its dashboard. Every project gets a card with its tokens, active hours and what you did, read from Claude Code's own session logs on your computer."}},
  {"@type":"Question","name":"Does Worklog send my code anywhere?","acceptedAnswer":{"@type":"Answer","text":"No. It never saves your files or Claude's replies. It keeps short notes (the start of your prompts, token counts, file names, commit messages) on your computer and in a private git repo you choose. Common secrets are blanked out first. AI summaries are optional and use your own Claude account."}},
  {"@type":"Question","name":"Does it work with several Claude accounts and computers?","acceptedAnswer":{"@type":"Answer","text":"Yes. It tells accounts apart, even with one-click account switchers, and combines several computers through your private git repo."}},
  {"@type":"Question","name":"Is Worklog for Claude Code free?","acceptedAnswer":{"@type":"Answer","text":"Yes. It is open source under the MIT licence and needs only Python 3.10 or newer and git."}},
- {"@type":"Question","name":"How is it different from ccusage and other usage trackers?","acceptedAnswer":{"@type":"Answer","text":"Token and cost reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools."}}]}]}
+ {"@type":"Question","name":"How is it different from ccusage and other usage trackers?","acceptedAnswer":{"@type":"Answer","text":"Token reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools."}}]}]}
 </script>
 <style>
 :root{--bg:#0A0D24;--panel:rgba(255,255,255,.06);--rule:rgba(255,255,255,.14);--ink:#EEF2FF;--muted:#A3AECB;--a:#7C5CFF;--b:#22D3EE;--warm:#F59E0B}
@@ -92,7 +92,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace}
 <div class="hero">
   <div>
     <h1>Claude Code usage tracker and <span class="grad">daily work log</span></h1>
-    <p class="lead">See what you did with Claude Code each day, in plain words, with <b>tokens, cost and hours per project</b>. Free, open source, and private: it runs on your computer and keeps your data in your own git repo.</p>
+    <p class="lead">See what you did with Claude Code each day, in plain words, with <b>tokens and hours per project</b>. Free, open source, and private: it runs on your computer and keeps your data in your own git repo.</p>
     <div class="cmd"><span>$</span>pipx install worklog-for-claude-code</div>
     <div class="btns">
       <a class="btn main" href="https://github.com/us-urvin/worklog-for-claude-code#install-in-3-steps">Install in 3 steps</a>
@@ -114,7 +114,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace}
   <p class="sub">Worklog reads Claude Code's own session logs on your computer and turns them into a work log you can read, search and share.</p>
   <div class="grid">
     <article class="card"><h3>✍️ Every project, in plain words</h3><p>One card per project with a short summary, the kind of work, pull requests and tasks. Claude writes the summary with your own account, or skip AI and keep it fully local.</p><img src="images/card.png" width="688" height="576" alt="A project card with a plain-language summary, PR links and a task list" loading="lazy"></article>
-    <article class="card"><h3>📊 Token usage and cost per project</h3><p>Tokens by account and model, active hours, and the cost at API prices for every project and day. See which work uses your Pro or Max limits.</p><img src="images/trends.png" width="1112" height="646" alt="Trends: hours, sessions, tokens and cost compared with last week" loading="lazy"></article>
+    <article class="card"><h3>📊 Token usage per project</h3><p>Tokens by account and model, and active hours, for every project and day. See which work uses your Pro or Max limits.</p><img src="images/trends.png" width="1112" height="646" alt="Trends: hours, sessions and tokens compared with last week" loading="lazy"></article>
     <article class="card"><h3>🔎 Ask your worklog</h3><p>"When did I review PR 505?" Search forgives typos and finds the day. Tick <b>Ask Claude</b> for a short written answer with links.</p><img src="images/ask.png" width="1112" height="567" alt="Ask your worklog: a question answered from saved notes" loading="lazy"></article>
     <article class="card"><h3>🧾 A timesheet, ready for Excel</h3><p>Hours, kind of work and one line per project and day. Download it as Excel or CSV for your client or manager.</p><img src="images/timesheet.png" width="1112" height="801" alt="Timesheet with hours and a summary line per day and project" loading="lazy"></article>
     <article class="card"><h3>📍 Where you left off</h3><p>Your last projects, open tasks, branch, PRs and tickets at the top of the page, so mornings start fast.</p><img src="images/leaveoff.png" width="1112" height="317" alt="Where you left off: last projects with open tasks and branches" loading="lazy"></article>
@@ -147,11 +147,11 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace}
 
 <section id="faq" aria-labelledby="q-h">
   <h2 id="q-h">Questions</h2>
-  <details><summary>How do I see Claude Code token usage per project?</summary><p>Install Worklog and open its dashboard. Every project gets a card with its tokens, cost at API prices, active hours and what you did, read from Claude Code's own session logs on your computer.</p></details>
+  <details><summary>How do I see Claude Code token usage per project?</summary><p>Install Worklog and open its dashboard. Every project gets a card with its tokens, active hours and what you did, read from Claude Code's own session logs on your computer.</p></details>
   <details><summary>Does Worklog send my code anywhere?</summary><p>No. It never saves your files or Claude's replies. Notes stay on your computer and in a private git repo you choose. AI summaries are optional and use your own Claude account; turn them off to stay fully offline.</p></details>
   <details><summary>Does it work with several Claude accounts and computers?</summary><p>Yes. It tells accounts apart, even with one-click account switchers, and combines several computers through your private git repo.</p></details>
   <details><summary>Can I see it on my phone?</summary><p>Yes: turn on the phone summary on one computer and open your data repo's <code>phone</code> folder in the GitHub app. It stays private.</p></details>
-  <details><summary>How is it different from ccusage and other usage trackers?</summary><p>Token and cost reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools.</p></details>
+  <details><summary>How is it different from ccusage and other usage trackers?</summary><p>Token reports tell you how much you used. Worklog also writes down what you worked on, project by project, keeps a timesheet, shows where you left off, and lets you search or ask about past work. You can use it alongside other tools.</p></details>
   <details><summary>Is it free?</summary><p>Yes. It's open source under the MIT licence.</p></details>
 </section>
 </main>

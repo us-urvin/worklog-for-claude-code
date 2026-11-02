@@ -2,7 +2,7 @@
 
 **Your Claude Code work, written down for you: what you did each day, how long it took, and what it used.**
 
-A free, open-source **Claude Code usage tracker** and **daily work log**: tokens, cost and hours **per project**, a timesheet, and plain-language summaries of what you did, across all your Claude accounts and computers. It runs on your computer and keeps your data in your own private git repo.
+A free, open-source **Claude Code usage tracker** and **daily work log**: tokens and hours **per project**, a timesheet, and plain-language summaries of what you did, across all your Claude accounts and computers. It runs on your computer and keeps your data in your own private git repo.
 
 [![Downloads](https://static.pepy.tech/badge/worklog-for-claude-code)](https://pepy.tech/project/worklog-for-claude-code)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
@@ -72,7 +72,7 @@ A checklist shows anything still missing, with the exact command for your comput
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag, PR links and Claude's task list"><br><b>Every project, in plain words</b>, with tasks and PRs.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/leaveoff.png" alt="Goals and where you left off"><br><b>Goals and where you left off</b>, at the top of Today.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions, tokens and cost compared with last week, in plain sentences"><br><b>Trends</b>, compared with last week.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions and tokens compared with last week, in plain sentences"><br><b>Trends</b>, compared with last week.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/ask.png" alt="Ask your worklog: search results for a question"><br><b>Ask your worklog</b> anything about past work.</td>
 </tr><tr>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br><b>A timesheet</b>, ready for Excel.</td>

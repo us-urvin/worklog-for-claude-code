@@ -812,8 +812,7 @@ def _refs_html(p, cfg) -> str:
 
 
 def _detail_facts(p, cfg) -> list[tuple[str, str]]:
-    """Tests, Claude's time compared with yours, and the cost at API prices (all from the session records)."""
-    from . import cost
+    """Tests, and Claude's time compared with yours (both from the session records)."""
     out = []
     if p.tests.get("runs"):
         bits = [f'{p.tests["runs"]} run{"s" * (p.tests["runs"] != 1)}']
@@ -825,11 +824,6 @@ def _detail_facts(p, cfg) -> list[tuple[str, str]]:
     if p.claude_minutes and p.minutes:
         you = max(0, p.minutes - p.claude_minutes)
         out.append(("Claude / you", f"{_dur(min(p.claude_minutes, p.minutes))} · {_dur(you)}"))
-    dollars, unknown = cost.estimate(p.models, cfg.cost_custom)
-    if dollars > 0:
-        note = " + unknown models" if unknown else ""
-        out.append(("At API prices", f'<span title="An estimate at Anthropic API prices (as of {cost.PRICES_AS_OF}); '
-                                     f'Pro and Max plans are not billed per token">≈ {cost.money(dollars)}{note}</span>'))
     return out
 
 
@@ -1053,7 +1047,7 @@ def _delta(now: float, before: float) -> str:
 
 def page_trends(app: App, cfg: Config, q: dict) -> str:
     """Weeks and months compared, in numbers and a few plain sentences (all worked out on this computer)."""
-    from . import cost, insights
+    from . import insights
     store = _store(cfg)
     if store is None:
         return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
@@ -1074,10 +1068,10 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
         series_start = (start - timedelta(days=150)).replace(day=1)
     entries = cache.days(series_start, min(end, today))
     cache.save()
-    now = insights.period(entries, start, min(end, today), cfg.cost_custom)
+    now = insights.period(entries, start, min(end, today))
     # A period still running is compared with the same number of days of the one before (Mon-Wed with Mon-Wed).
     so_far = (min(end, today) - start).days
-    before = insights.period(entries, prev_start, min(prev_end, prev_start + timedelta(days=so_far)), cfg.cost_custom)
+    before = insights.period(entries, prev_start, min(prev_end, prev_start + timedelta(days=so_far)))
     series = []
     if view == "week":
         for i in range(8):
@@ -1095,7 +1089,7 @@ def page_trends(app: App, cfg: Config, q: dict) -> str:
     tiles = [("Hours", _dur(now.minutes), _delta(now.minutes, before.minutes)),
              ("Sessions", str(now.sessions), _delta(now.sessions, before.sessions)),
              ("Tokens", _short(now.tokens), _delta(now.tokens, before.tokens)),
-             ("At API prices", "≈ " + cost.money(now.dollars), _delta(now.dollars, before.dollars))]
+             ("Active days", str(now.days_active), _delta(now.days_active, before.days_active))]
     tiles_html = "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{e(v)}</div>{d}</div>'
                          for k, v, d in tiles)
     lines = "".join(f"<li>{e(x)}</li>" for x in insights.sentences(now, before, word))
@@ -1168,7 +1162,7 @@ def _share_period(cfg: Config, store, q: dict):
     entries = cache.days(max(start, today - timedelta(days=399)), min(end, today))
     span = cache.days(min(end, today) - timedelta(days=120), min(end, today))
     cache.save()
-    p = insights.period(entries, start, min(end, today), cfg.cost_custom)
+    p = insights.period(entries, start, min(end, today))
     streak = viz.streak({d for d, x in span.items() if x.get("n")}, min(end, today))
     if what == "day":
         series = [(f"{h:02d}", p.hours[h]) for h in range(24)]
@@ -1255,7 +1249,7 @@ def page_share(app: App, cfg: Config, q: dict) -> str:
 
 
 def page_year(app: App, cfg: Config, q: dict) -> str:
-    from . import cost, insights
+    from . import insights
     store = _store(cfg)
     if store is None:
         return '<div class="empty">No data repo yet. <a href="/settings">Set it up in Settings</a>.</div>'
@@ -1269,10 +1263,10 @@ def page_year(app: App, cfg: Config, q: dict) -> str:
     start = max(date(year, 1, 1), today - timedelta(days=399))
     entries = cache.days(start, min(date(year, 12, 31), today))
     cache.save()
-    y = insights.year_review(entries, year, cfg.cost_custom)
+    y = insights.year_review(entries, year)
     p = y["period"]
     tiles = [("Hours", _dur(p.minutes)), ("Days worked", str(p.days_active)), ("Sessions", str(p.sessions)),
-             ("At API prices", "≈ " + cost.money(p.dollars))]
+             ("Tokens", _short(p.tokens))]
     months = viz.column_bars([(date(year, i + 1, 1).strftime("%b"), m, False,
                                f"/trends?view=month&d={date(year, i + 1, 1).isoformat()}") for i, m in enumerate(y["months"])])
     facts = []
@@ -2162,17 +2156,13 @@ def _write_digest(cfg: Config, store) -> str:
 
 def settings_extras(app: App, cfg: Config) -> str:
     """Settings added in 0.5.0: ticket links (and, below, goals and the phone summary)."""
-    from . import cost
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
-    return f"""<section class="block" id="links"><h2>Links and cost</h2>
+    return f"""<section class="block" id="links"><h2>Links</h2>
 <form method="post" action="/settings/links">{c}
 <label for="tracker">Ticket links</label>
 <input type="text" id="tracker" name="tracker" value="{e(cfg.tracker_url)}" placeholder="https://your-team.atlassian.net/browse/">
 <p class="help" style="margin-top:6px">Ticket numbers such as <code>XOO2-295</code> on the cards link to this address plus the number.
 Pull request numbers (<code>#505</code>) link to the project's repo by themselves.</p>
-<p class="muted" style="font-size:.85rem">“At API prices” on the cards estimates what the tokens would cost at Anthropic&#39;s API
-prices (as of {cost.PRICES_AS_OF}). On Pro and Max plans usage counts against your limits instead. Other prices can be set in the
-<code>[cost]</code> section of the config file.</p>
 <div class="row"><button>Save changes</button></div></form></section>
 <section class="block" id="older"><h2>Older days</h2>
 <p class="help">Days recorded by versions before 0.4.0 count time from the first to the last message, so a window left open

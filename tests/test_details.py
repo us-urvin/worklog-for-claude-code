@@ -1,7 +1,8 @@
-"""0.5.0: richer session details (PR and ticket refs, test runs, Claude's time) and cost estimates."""
+"""0.5.0: richer session details (PR and ticket refs, test runs, Claude's time). Cost was removed in 0.5.2."""
+import re
+
 from test_smart import _parse, _result, _tool, _user, _write
 
-from worklog import cost
 from worklog.parser import find_refs, run_outcome
 
 
@@ -41,20 +42,7 @@ def test_test_outcome_reading():
     assert run_outcome("test result: ok. 9 passed", False) is True
 
 
-def test_cost_estimates_never_guess():
-    assert cost.price("claude-opus-5-5") == (4.0, 20.0, 5.0, 0.2)
-    assert cost.price("claude-3-5-haiku-20241022")[:2] == (0.8, 4.0)
-    assert cost.price("claude-opus-4-2") is None and cost.price("gpt-4o") is None
-    usage = {"claude-opus-5-5": {"input": 1_000_000, "output": 100_000, "cache_creation": 0, "cache_read": 10_000_000},
-             "someone-elses-model": {"input": 5, "output": 5}}
-    dollars, unknown = cost.estimate(usage)
-    assert round(dollars, 2) == 8.0 and unknown == 10
-    assert cost.estimate(usage, custom={"someone-elses-model": (1.0, 1.0)})[1] == 0
-    assert cost.money(0) == "$0" and cost.money(0.004) == "< $0.01" and cost.money(12.345) == "$12.35"
-    assert cost.money(1234.5) == "$1,234"
-
-
-def test_cards_show_refs_tests_time_and_cost(home, repo, monkeypatch):
+def test_cards_show_refs_tests_and_time_but_no_cost(home, repo, monkeypatch):
     from datetime import date
 
     from test_accounts import make_cfg
@@ -73,7 +61,8 @@ def test_cards_show_refs_tests_time_and_cost(home, repo, monkeypatch):
     app = web.App(1)
     body, _ = web.page_day(app, cfg, date(2026, 11, 2))
     assert 'href="https://github.com/xoikospos/xoo/pull/505"' in body and '<span class="ref">XOO2-295</span>' in body
-    assert "3 runs · 1 fixed" in body and "20m · 30m" in body and "≈ $4.00" in body
+    assert "3 runs · 1 fixed" in body and "20m · 30m" in body
+    assert "API prices" not in body and "$" not in re.sub(r"<script.*?</script>", "", body, flags=re.S)
     assert app.post("/settings/links", {"tracker": "javascript:alert(1)"})[1].startswith("Ticket links")
     assert app.post("/settings/links", {"tracker": "https://acme.atlassian.net/browse/"})[1] is None
     cfg = load_config(cfg.path)

@@ -127,7 +127,6 @@ class Config:
     ai_timeout: int = 180
     time_mode: str = "active"  # [report] time: "active" (breaks over 15 min don't count) or "wall"
     tracker_url: str = ""  # [links] tracker: Jira-style tickets link to tracker_url + "XOO2-295"
-    cost_custom: dict = field(default_factory=dict)  # [cost] model id = [input, output] per million tokens
     phone_digest: bool = False  # [phone] digest: this computer writes phone/README.md for the GitHub app
     goal_hours: float = 0.0  # [goals] hours: focused hours per day (0 = no goal)
     goal_tokens: int = 0  # [goals] weekly_tokens: a weekly token limit to stay under (0 = none)
@@ -245,16 +244,6 @@ def _tracker(v: object) -> str:
     return v
 
 
-def _costs(table: dict) -> dict:
-    out = {}
-    for model, pair in table.items():
-        if (isinstance(pair, list) and len(pair) == 2 and all(isinstance(x, (int, float)) for x in pair)
-                and re.match(r"^[\w.:@/\[\]-]{1,80}$", str(model))):
-            out[str(model)] = (float(pair[0]), float(pair[1]))
-        else:
-            raise ConfigError(f"[cost] {model} must be [input, output] prices per million tokens")
-    return out
-
 
 def _match_email(name: str, v: object) -> str | None:
     if v is None or v == "":
@@ -334,7 +323,6 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
         time_mode="wall" if rep.get("time") == "wall" else "active",
         tracker_url=_tracker(_table(raw, "links").get("tracker")),
-        cost_custom=_costs(_table(raw, "cost")),
         phone_digest=bool(_table(raw, "phone").get("digest", False)),
         goal_hours=_number(_table(raw, "goals"), "hours", 0, 24),
         goal_tokens=int(_number(_table(raw, "goals"), "weekly_tokens", 0, 10_000_000_000)),
@@ -406,8 +394,6 @@ def dump_config(cfg: Config) -> str:
             "[links]", f"tracker = {q(cfg.tracker_url)}", "",
             "[phone]", f"digest = {b(cfg.phone_digest)}", "",
             "[goals]", f"hours = {cfg.goal_hours:g}", f"weekly_tokens = {cfg.goal_tokens}", ""]
-    if cfg.cost_custom:
-        out += ["[cost]"] + [f"{q(m)} = [{i}, {o}]" for m, (i, o) in sorted(cfg.cost_custom.items())] + [""]
     return "\n".join(out)
 
 
