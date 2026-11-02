@@ -405,6 +405,9 @@ border-radius:50%;border:2px solid var(--ink);border-right-color:transparent;ani
 .pill.tag{color:var(--accent-2);border-color:color-mix(in srgb,var(--accent-2) 45%,transparent)}
 a.btn.edit{padding:5px 12px;font-size:.82rem}
 .para{margin:8px 0 6px;max-width:72ch;font-size:1rem}.entry details{margin-top:6px}
+.refs{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}.ref{font-size:.78rem;font-weight:700;padding:2px 9px;border-radius:8px;
+border:1px solid color-mix(in srgb,var(--accent-2) 45%,var(--rule));color:var(--accent-2);background:var(--glass-hi);text-decoration:none;
+font-family:"JetBrains Mono","Ubuntu Mono",monospace}a.ref:hover{border-color:var(--accent-2)}
 .tline{font-size:.88rem;margin:8px 0;padding:8px 12px;border-radius:12px;background:var(--glass-hi);border:1px solid var(--rule);
 max-width:72ch;overflow-wrap:anywhere}
 .guess{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px 12px;border-radius:14px;
@@ -682,6 +685,56 @@ def _summary_age(meta: dict) -> float:
         return datetime.fromisoformat(str(meta.get("generated_at"))).timestamp()
     except ValueError:
         return 0.0
+
+
+def ref_url(ref: str, remote: dict | None, tracker: str = "") -> str | None:
+    """Where a "#505" or "XOO2-295" points: the repo's pull request, or your tracker."""
+    if ref.startswith("#") and isinstance(remote, dict) and remote.get("slug"):
+        n, host, slug = ref[1:], str(remote.get("host", "")), str(remote["slug"])
+        if host == "github.com":
+            return f"https://github.com/{slug}/pull/{n}"
+        if "gitlab" in host:
+            return f"https://{host}/{slug}/-/merge_requests/{n}"
+        if host == "bitbucket.org":
+            return f"https://bitbucket.org/{slug}/pull-requests/{n}"
+        return None
+    if not ref.startswith("#") and tracker:
+        return tracker + ref
+    return None
+
+
+def _refs_html(p, cfg) -> str:
+    """PR and ticket numbers as small chips, linked when Worklog knows where they live."""
+    if not p.refs:
+        return ""
+    chips = []
+    for ref in p.refs[:12]:
+        url = ref_url(ref, p.remote, cfg.tracker_url)
+        chips.append(f'<a class="ref" href="{e(url)}" target="_blank" rel="noopener noreferrer">{e(ref)}</a>' if url
+                     else f'<span class="ref">{e(ref)}</span>')
+    return f'<div class="refs" aria-label="Pull requests and tickets">{"".join(chips)}</div>'
+
+
+def _detail_facts(p, cfg) -> list[tuple[str, str]]:
+    """Tests, Claude's time compared with yours, and the cost at API prices (all from the session records)."""
+    from . import cost
+    out = []
+    if p.tests.get("runs"):
+        bits = [f'{p.tests["runs"]} run{"s" * (p.tests["runs"] != 1)}']
+        if p.tests.get("fixed"):
+            bits.append(f'{p.tests["fixed"]} fixed')
+        elif p.tests.get("failed"):
+            bits.append(f'{p.tests["failed"]} failed')
+        out.append(("Tests", " · ".join(bits)))
+    if p.claude_minutes and p.minutes:
+        you = max(0, p.minutes - p.claude_minutes)
+        out.append(("Claude / you", f"{_dur(min(p.claude_minutes, p.minutes))} · {_dur(you)}"))
+    dollars, unknown = cost.estimate(p.models, cfg.cost_custom)
+    if dollars > 0:
+        note = " + unknown models" if unknown else ""
+        out.append(("At API prices", f'<span title="An estimate at Anthropic API prices (as of {cost.PRICES_AS_OF}); '
+                                     f'Pro and Max plans are not billed per token">≈ {cost.money(dollars)}{note}</span>'))
+    return out
 
 
 def card_tag(p, s: dict, ov) -> str | None:
@@ -1034,6 +1087,7 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
                    f'{time_txt}</span>'),
                   ("Tokens", _n(sum(p.tokens.values())) if p.sessions else "no data from claude.ai")]
         facts += [("Files edited", str(len(p.files)))] if p.files or p.sessions else []
+        facts += _detail_facts(p, cfg)
         dl = "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts)
         extra = ""
         if p.commits:
@@ -1051,8 +1105,8 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
         tline = (f'<div class="tline"><span class="muted">Timesheet:</span> {e(line)}</div>'
                  if s.get("source") == "ai" or mine else "")
         entries.append(f'<article class="entry">{head_row}<div class="where">{where}</div>{_guess_html(app, day, p)}'
-                       f'{items}{tline}{_tasks_html(p, s)}<div class="src">{e(src)}</div><dl class="facts">{dl}</dl>'
-                       f'{extra}</article>')
+                       f'{_refs_html(p, cfg)}{items}{tline}{_tasks_html(p, s)}<div class="src">{e(src)}</div>'
+                       f'<dl class="facts">{dl}</dl>{extra}</article>')
         if edit_key == p.key:
             edit_html = _edit_form(app, day, p, projects, known, ov, line, s.get("tag") or "")
 
@@ -1525,6 +1579,22 @@ its own key and a nickname:</p>
 that blocks SSH (port 22), use <code>HostName ssh.github.com</code> and add <code>Port 443</code>.</p></details>"""
 
 
+def settings_extras(app: App, cfg: Config) -> str:
+    """Settings added in 0.5.0: ticket links (and, below, goals and the phone summary)."""
+    from . import cost
+    c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
+    return f"""<section class="block" id="links"><h2>Links and cost</h2>
+<form method="post" action="/settings/links">{c}
+<label for="tracker">Ticket links</label>
+<input type="text" id="tracker" name="tracker" value="{e(cfg.tracker_url)}" placeholder="https://your-team.atlassian.net/browse/">
+<p class="help" style="margin-top:6px">Ticket numbers such as <code>XOO2-295</code> on the cards link to this address plus the number.
+Pull request numbers (<code>#505</code>) link to the project's repo by themselves.</p>
+<p class="muted" style="font-size:.85rem">“At API prices” on the cards estimates what the tokens would cost at Anthropic&#39;s API
+prices (as of {cost.PRICES_AS_OF}). On Pro and Max plans usage counts against your limits instead. Other prices can be set in the
+<code>[cost]</code> section of the config file.</p>
+<div class="row"><button>Save changes</button></div></form></section>"""
+
+
 def page_settings(app: App, cfg: Config, forget_ref: str | None = None) -> str:
     c = f'<input type="hidden" name="csrf" value="{app.csrf}">'
 
@@ -1620,7 +1690,7 @@ account tool) and when a new Claude folder appears, so sessions are counted unde
 <p class="help">Build the daily report automatically at 23:30 on this device. Turn this on for one device only.</p>
 <input type="hidden" name="enabled" value="{"0" if report_on else "1"}">
 <button class="quiet"{"" if services.available() else " disabled"}>{"Turn off daily report here" if report_on else "Turn on daily report here"}</button></form></section>
-
+{settings_extras(app, cfg)}
 <section class="block"><h2>This device</h2>
 <form method="post" action="/settings/device">{c}
 <label for="device">Device name</label><input type="text" id="device" name="device" value="{e(cfg.device)}" required pattern="{NAME_PATTERN}">
@@ -1771,6 +1841,12 @@ class App:
             except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                 return None, str(exc), form
             return "/settings?ok=saved", None, form
+        if path == "/settings/links":
+            value = form.get("tracker", "").strip()
+            if value and not re.match(r"^https?://[^\s\"'<>]{3,300}$", value):
+                return None, "Ticket links: enter a web address starting with https://", form
+            cfg.tracker_url = value
+            return self._save(cfg, "saved")
         if path == "/settings/device":
             device = form.get("device", "")
             store = _expand(form.get("store", "") or "~/claude-worklog-data")
@@ -1785,7 +1861,7 @@ class App:
     def _save(self, cfg: Config, ok: str, page: str = "/settings"):
         checks.forget_cache()
         try:
-            save_config(cfg)
+            save_config(cfg, cfg.path)
         except (ConfigError, OSError) as exc:
             return None, f"Couldn't save settings: {exc}", {}
         return f"{page}?ok={ok}", None, {}

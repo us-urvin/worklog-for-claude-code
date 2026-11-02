@@ -126,6 +126,8 @@ class Config:
     summary_model: str = ""  # passed to `claude -p --model`; empty = the account's default
     ai_timeout: int = 180
     time_mode: str = "active"  # [report] time: "active" (breaks over 15 min don't count) or "wall"
+    tracker_url: str = ""  # [links] tracker: Jira-style tickets link to tracker_url + "XOO2-295"
+    cost_custom: dict = field(default_factory=dict)  # [cost] model id = [input, output] per million tokens
     chat_account: str | None = None
     watch_downloads: bool = False
     downloads_dir: Path | None = None
@@ -226,6 +228,24 @@ def _model(v: object) -> str:
     return v
 
 
+def _tracker(v: object) -> str:
+    v = str(v or "").strip()
+    if v and not re.match(r"^https?://[^\s\"'<>]+$", v):
+        raise ConfigError('[links] tracker must be a web address such as "https://you.atlassian.net/browse/"')
+    return v
+
+
+def _costs(table: dict) -> dict:
+    out = {}
+    for model, pair in table.items():
+        if (isinstance(pair, list) and len(pair) == 2 and all(isinstance(x, (int, float)) for x in pair)
+                and re.match(r"^[\w.:@/\[\]-]{1,80}$", str(model))):
+            out[str(model)] = (float(pair[0]), float(pair[1]))
+        else:
+            raise ConfigError(f"[cost] {model} must be [input, output] prices per million tokens")
+    return out
+
+
 def _match_email(name: str, v: object) -> str | None:
     if v is None or v == "":
         return None
@@ -303,6 +323,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         summary_model=_model(rep.get("model")),
         ai_timeout=_int(rep, "ai_timeout_seconds", 180, 10, 1800),
         time_mode="wall" if rep.get("time") == "wall" else "active",
+        tracker_url=_tracker(_table(raw, "links").get("tracker")),
+        cost_custom=_costs(_table(raw, "cost")),
         chat_account=chat_account,
         watch_downloads=bool(chat.get("watch_downloads", False)),
         downloads_dir=_expand(downloads) if downloads else None,
@@ -367,7 +389,10 @@ def dump_config(cfg: Config) -> str:
             f"downloads_dir = {q(home_relative(cfg.downloads_dir) if cfg.downloads_dir else '')}",
             f"keep_summaries = {b(cfg.keep_chat_summaries)}", "",
             "[watch]", f"auto_setup = {b(cfg.auto_setup)}", "",
-            "[ui]", f"fun = {b(cfg.fun)}", f"check_updates = {b(cfg.check_updates)}", ""]
+            "[ui]", f"fun = {b(cfg.fun)}", f"check_updates = {b(cfg.check_updates)}", "",
+            "[links]", f"tracker = {q(cfg.tracker_url)}", ""]
+    if cfg.cost_custom:
+        out += ["[cost]"] + [f"{q(m)} = [{i}, {o}]" for m, (i, o) in sorted(cfg.cost_custom.items())] + [""]
     return "\n".join(out)
 
 

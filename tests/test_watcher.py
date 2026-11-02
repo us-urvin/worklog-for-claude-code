@@ -201,7 +201,7 @@ def test_auto_setup_adds_folder_and_hook(home, repo, wstate, monkeypatch):
 def test_add_folder_from_a_notice(home, repo, wstate, monkeypatch):
     cfg = make_cfg(home, repo)
     from worklog.config import save_config
-    monkeypatch.setattr(web, "save_config", lambda c: save_config(c, c.path))
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: save_config(c, c.path))
     (home / ".claude-client" / "projects" / "-x").mkdir(parents=True)
     (home / ".claude-client" / "projects" / "-x" / "s.jsonl").write_text("{}\n")
     app = web.App(8765)

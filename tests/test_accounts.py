@@ -262,7 +262,7 @@ def test_detected_accounts_panel_masks_and_names(home, repo, monkeypatch):
     assert "&lt;***@example.org" in html_out and "Counted as personal" in html_out  # only login in its folder
 
     saved = []
-    monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: saved.append(c))
     app = web.App(8765)
     ref = identity.ref(UID_B)
     loc, err, _ = app._account_name(cfg, {"ref": ref, "dir": "~/.claude", "name": "work"})
@@ -299,7 +299,7 @@ def test_naming_a_login_refiles_older_days_too(home, repo, monkeypatch):
     assert f"records/{d}/dev1/personal/s-old.json" in records(repo)  # unnamed login -> folder default
 
     from worklog.config import save_config
-    monkeypatch.setattr(web, "save_config", lambda c: save_config(c, c.path))
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: save_config(c, c.path))
     monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
     app = web.App(8765)
     loc, err, _ = app.post("/accounts/name", {"ref": identity.ref(UID_B), "dir": "~/.claude", "name": "work"})
@@ -348,7 +348,7 @@ def test_summary_model_config_roundtrip_and_validation(home, repo):
 def test_settings_form_saves_summary_model(home, repo, monkeypatch):
     cfg = make_cfg(home, repo)
     saved = []
-    monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: saved.append(c))
     monkeypatch.setattr(web, "_try_config", lambda: load_config(cfg.path))
     app = web.App(8765)
     base = {"summarizer": "personal", "claude_bin": "claude", "use_ai": "1"}

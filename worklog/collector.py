@@ -182,6 +182,9 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "files_touched": files,
         "tool_calls": dict(sd.tool_calls),
         "tasks": tasks,
+        "refs": [redact(r)[:40] for r in sd.refs],
+        "tests": sd.test_counts(),
+        "claude_minutes": sd.claude_minutes(),
         "commits": _commits(root, sd.day) if root and cfg.include_commits else [],
     }
 

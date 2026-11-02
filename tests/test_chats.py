@@ -405,7 +405,7 @@ def test_sources_page_and_settings(server, cfg, monkeypatch):
     assert "claude.ai chats" in html_out and "Not imported yet" in html_out and "Coming later" in html_out
     assert "Nothing in your Downloads folder is read" in html_out
     saved = []
-    monkeypatch.setattr(web, "save_config", lambda c: saved.append(c))
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: saved.append(c))
     loc, err, _ = app.post("/sources/settings", {"account": "work", "watch": "1", "downloads": "~/dl"})
     assert err is None and loc == "/sources?ok=chat_saved"
     new = saved[-1]
@@ -464,7 +464,7 @@ def test_day_page_lists_each_chat_and_marks_chat_days(cfg, tmp_path):
 def test_turning_summaries_off_in_the_ui_removes_them(server, cfg, monkeypatch):
     app, _ = server
     cfg.keep_chat_summaries = True
-    monkeypatch.setattr(web, "save_config", lambda c: None)
+    monkeypatch.setattr(web, "save_config", lambda c, path=None: None)
     removed = []
     monkeypatch.setattr(chats, "strip_summaries", lambda c: removed.append(c) or 3)
     loc, err, _ = app.post("/sources/settings", {"account": "personal"})

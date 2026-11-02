@@ -117,6 +117,10 @@ class ProjectDay:
     guess: dict | None = None  # "Probably xoo?" for sessions that found no repo
     moved: bool = False  # sessions were moved here or a rule applied
     detected: bool = False  # a session here was found by 0.4.0's detection (it started outside this repo)
+    refs: list[str] = field(default_factory=list)  # PR and ticket numbers
+    tests: Counter = field(default_factory=Counter)  # runs, failed, fixed
+    claude_minutes: int = 0
+    models: dict[str, dict[str, int]] = field(default_factory=dict)  # tokens per model, for the cost estimate
 
     @property
     def tag(self) -> str | None:
@@ -242,6 +246,13 @@ def aggregate(records: list[dict], ov: Overrides | None = None, time_mode: str =
             p.commits.setdefault(c.get("hash", ""), c.get("subject", ""))
         tag = ov.tags.get(sid) or tag_session(dict(r, prompts=prompts))
         p.tag_weights[tag] += max(1, act)
+        for ref in r.get("refs") or []:
+            if isinstance(ref, str) and ref not in p.refs and len(p.refs) < 20:
+                p.refs.append(ref)
+        p.tests.update({k: v for k, v in (r.get("tests") or {}).items() if isinstance(v, int)})
+        p.claude_minutes += int(r.get("claude_minutes") or 0)
+        for model, t in (r.get("tokens_by_model") or {}).items():
+            _add(p.models.setdefault(model, zero_tokens()), t)
         for t in r.get("tasks") or []:
             if isinstance(t, dict) and t.get("text") and not any(x["text"] == t["text"] for x in p.tasks):
                 p.tasks.append({"text": str(t["text"]), "status": "done" if t.get("status") == "done" else "open"})
