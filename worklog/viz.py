@@ -197,3 +197,25 @@ ROBOT = """<svg class="robot" viewBox="0 0 120 120" role="img" aria-label="A sle
 <rect x="90" y="54" width="8" height="18" rx="4" class="rb"/></g>
 <text x="92" y="30" class="z z1">z</text><text x="100" y="20" class="z z2">z</text>
 <text x="108" y="10" class="z z3">Z</text></svg>"""
+
+
+# ------------------------------------------------------------------ trends
+def column_bars(items: list[tuple[str, int, bool, str]], unit: str = "h") -> str:
+    """Vertical bars for weeks or months: (label, minutes, highlighted, link)."""
+    if not items:
+        return ""
+    peak = max((m for _, m, _, _ in items), default=0) or 1
+    w, gap, h = 34, 14, 120
+    parts = []
+    for i, (label, m, hl, link) in enumerate(items):
+        x = i * (w + gap)
+        bh = max(2.0, (h - 8) * m / peak) if m else 2.0
+        val = f"{m / 60:.0f}{unit}" if m >= 60 else (f"{m}m" if m else "")
+        bar = (f'<rect class="bar{" hl" if hl else ""}" x="{x}" y="{h - bh:.1f}" width="{w}" height="{bh:.1f}" rx="7" '
+               f'style="animation-delay:{i * 50}ms"><title>{_e(label)}: {_e(val or "no work")}</title></rect>')
+        parts.append((f'<a href="{_e(link)}">{bar}</a>' if link else bar)
+                     + f'<text class="v" x="{x + w / 2}" y="{h - bh - 5:.1f}" text-anchor="middle">{_e(val)}</text>'
+                     + f'<text class="l" x="{x + w / 2}" y="{h + 16}" text-anchor="middle">{_e(label)}</text>')
+    width = len(items) * (w + gap) - gap
+    return (f'<svg class="cols" viewBox="0 -14 {width} {h + 36}" role="img" aria-label="Hours per period">'
+            f'{"".join(parts)}</svg>')

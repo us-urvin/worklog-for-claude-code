@@ -334,6 +334,61 @@ def cmd_timesheet(args) -> int:
     return 0
 
 
+def cmd_digest(args) -> int:
+    """Write the phone summary (phone/README.md in the data repo) now, or print it with --stdout."""
+    from . import digest
+    from .daycache import DayCache
+    from .store import GitStore
+    cfg = load_config()
+    store = GitStore(cfg.store_repo)
+    if args.stdout:
+        cache = DayCache(store, cfg.time_mode)
+        print(digest.render(cache, date.today(), cfg.device), end="")
+        cache.save()
+        return 0
+    if not cfg.phone_digest:
+        print("This computer doesn't write the phone summary. Turn it on in Settings → On your phone.", file=sys.stderr)
+        return 1
+    with store.lock():
+        store.pull()
+        changed = digest.write(cfg, store)
+        if changed:
+            store.commit_and_push(f"phone summary from {cfg.device}")
+    print("phone summary written" if changed else "phone summary already up to date")
+    return 0
+
+
+def cmd_ask(args) -> int:
+    """Search your worklog, or (with --claude) get a written answer from your own Claude account."""
+    from . import ask
+    from .daycache import DayCache
+    from .store import GitStore
+    cfg = load_config()
+    question = " ".join(args.question).strip()
+    if not question:
+        print("Ask something, e.g. claude-worklog ask \"what did I do last week?\"", file=sys.stderr)
+        return 2
+    cache = DayCache(GitStore(cfg.store_repo), cfg.time_mode)
+    if args.claude:
+        notes, _ = ask.context(cache, question, date.today())
+        cache.save()
+        try:
+            answer = ask.ask_claude(cfg, question, notes, date.today())
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        ask.remember(question, answer)
+        print(answer)
+        return 0
+    hits = ask.search(cache, question, date.today())
+    cache.save()
+    for h in hits:
+        print(f"{h['day']:%a %d %b %Y}  {h['project']}  ({h['minutes']} min)  {h['line']}")
+    if not hits:
+        print("Nothing matched. Try other words, or add --claude for a written answer.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="claude-worklog", description=__doc__)
     ap.add_argument("--version", action="version", version=__version__)
@@ -377,6 +432,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--round", type=int, choices=(0, 15, 30), default=0, help="round each row to N minutes")
     p.add_argument("--details", action="store_true", help="add accounts, devices, sessions and tokens")
     p.set_defaults(func=cmd_timesheet)
+    p = sub.add_parser("digest", help="write the phone summary (phone/README.md in the data repo)")
+    p.add_argument("--stdout", action="store_true", help="print it instead")
+    p.set_defaults(func=cmd_digest)
+    p = sub.add_parser("ask", help="search your worklog, or --claude for a written answer")
+    p.add_argument("question", nargs="+")
+    p.add_argument("--claude", action="store_true", help="answer with your own Claude account (uses a few tokens)")
+    p.set_defaults(func=cmd_ask)
     p = sub.add_parser("serve", help="run the web UI on loopback")
     p.add_argument("--port", type=int, default=8765)
     p.set_defaults(func=cmd_serve)

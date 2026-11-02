@@ -83,12 +83,13 @@ class GitStore:
                 self._git("rebase", "--abort", check=False)
 
     def commit_and_push(self, message: str) -> None:
-        dirs = [d for d in ("records", "reports", "overrides") if (self.path / d).exists()]
+        dirs = [d for d in ("records", "reports", "overrides", "phone") if (self.path / d).exists()]
         if not dirs:
             return
         attrs = self.path / ".gitattributes"
         if not attrs.exists():  # Mac, Linux and Windows devices share this repo: keep line endings identical
-            attrs.write_text("records/** text eol=lf\nreports/** text eol=lf\noverrides/** text eol=lf\n",
+            attrs.write_text("records/** text eol=lf\nreports/** text eol=lf\noverrides/** text eol=lf\n"
+                             "phone/** text eol=lf\n",
                              encoding="utf-8", newline="\n")
             dirs.append(".gitattributes")
         self._git("add", "-A", "--", *dirs)

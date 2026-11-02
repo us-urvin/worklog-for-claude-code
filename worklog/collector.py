@@ -182,6 +182,9 @@ def build_record(sd: SessionDay, account: Account, cfg: Config) -> dict | None:
         "files_touched": files,
         "tool_calls": dict(sd.tool_calls),
         "tasks": tasks,
+        "refs": [redact(r)[:40] for r in sd.refs],
+        "tests": sd.test_counts(),
+        "claude_minutes": sd.claude_minutes(),
         "commits": _commits(root, sd.day) if root and cfg.include_commits else [],
     }
 
@@ -280,6 +283,8 @@ def collect(cfg: Config, days: list[date]) -> int:
                     written += store.write_json(rel, record)
                 log.info("%s %s: %d files, %d lines (%d malformed), %d sessions",
                          day, label, stats.files, stats.lines, stats.bad_lines, len(sessions))
-        if written:
+        from . import digest
+        phone = digest.write(cfg, store)  # the phone summary, if this computer writes it
+        if written or phone:
             store.commit_and_push(f"collect {cfg.device}: {written} record(s)")
     return written

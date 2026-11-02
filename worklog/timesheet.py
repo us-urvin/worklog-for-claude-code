@@ -68,8 +68,18 @@ def build(store: GitStore, start: date, end: date, *, time_mode: str = "active",
         start, end = end, start
     if (end - start).days + 1 > MAX_DAYS:
         raise ValueError(f"Pick at most {MAX_DAYS} days.")
+    if not account:  # the day cache already holds every project-day: no need to read the records again
+        from .daycache import DayCache
+        cache = DayCache(store, time_mode)
+        rows = [Row(d, p["name"], p["key"], p["minutes"], p["tag"], p["line"], p["summarized"], p["accounts"],
+                    p["devices"], p["sessions"], p["tokens"], p["approx"])
+                for d, entry in cache.days(start, end).items() for p in entry.get("projects") or []
+                if not project or p["key"] == project]
+        cache.save()
+        rows.sort(key=lambda r: (r.day, -r.minutes, r.project))
+        return rows
     ov = overrides.load(store.path)
-    rows: list[Row] = []
+    rows = []
     d = start
     while d <= end:
         records = [r for r in store.iter_json(f"records/{d.isoformat()}")

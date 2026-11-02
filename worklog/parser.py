@@ -31,6 +31,54 @@ _TASK_DONE = {"completed", "done"}
 _TASK_CREATED = re.compile(r"Task #(\w+) created")
 
 
+# PR and ticket numbers: "#505", "PR 505", ".../pull/505", "gh pr view 505", and Jira-style "XOO2-295".
+_PR_REFS = (re.compile(r"(?<![\w&/])#(\d{1,5})(?![\w-])"),
+            re.compile(r"\b(?:PR|pull request|MR|merge request|review)\s*#?(\d{1,6})\b", re.I),
+            re.compile(r"/(?:pull|pulls|merge_requests|issues)/(\d{1,6})\b"),
+            re.compile(r"\bgh\s+(?:pr|issue)\s+(?:view|checkout|review|merge|comment|diff|close|edit|checks)\s+(\d{1,6})\b"))
+_TICKET = re.compile(r"(?<![\w/-])([A-Z][A-Z0-9]{1,9})-(\d{1,6})(?![\w-])")
+_BRANCH_TICKET = re.compile(r"(?:^|[/_-])([A-Z][A-Z0-9]{1,9})-(\d{1,6})(?=$|[/_-])")  # fix/XOO2-294-qty
+_NOT_TICKETS = set("""UTF SHA ISO RFC PEP GPT AES RSA HTTP TLS SSL COVID CVE IPV ES ECMA WCAG X86 ARM64 MD5 CRC UTC GMT
+FIPS IEEE ANSI OWASP TCP UDP CHAPTER STEP PHASE PART TOP LEVEL WIN MAC IOS DDR USB HDMI IPS""".split())
+_TEST_CMD = re.compile(r"(?:^|[\s;&|(])(?:pytest|py\.test|python3?\s+-m\s+(?:pytest|unittest)|(?:npm|yarn|pnpm|bun)\s+"
+                       r"(?:run\s+)?test(?![\w-])|npx\s+(?:jest|vitest)|jest|vitest|go\s+test|cargo\s+test|phpunit|"
+                       r"vendor/bin/phpunit|php\s+artisan\s+test|rspec|mvn\s+(?:-\S+\s+)*test|(?:\./)?gradlew?\s+test|"
+                       r"dotnet\s+test|mix\s+test|rails\s+test|tox|nox)(?![\w-])")
+_FAIL_COUNT = re.compile(r"(\d+)\s+(?:failed|failing|failures?|errors?)\b", re.I)
+_FAIL_WORD = re.compile(r"\bFAIL(?:ED)?\b|\bERRORS?:")
+_PASSED = re.compile(r"(\d+)\s+(?:passed|passing)\b|\bOK\b|\bPASS(?:ED)?\b|test result: ok", re.I)
+
+
+def find_refs(text: str, branch: bool = False) -> list[str]:
+    """"#505"-style PR numbers and "XOO2-295"-style tickets mentioned in a prompt, command or branch name."""
+    out: list[str] = []
+    if branch:
+        return [f"{m.group(1)}-{int(m.group(2))}" for m in _BRANCH_TICKET.finditer(text)
+                if m.group(1) not in _NOT_TICKETS][:3]
+    for rx in _PR_REFS:
+        for m in rx.finditer(text):
+            ref = f"#{int(m.group(1))}"
+            if ref not in out and m.group(1) != "0":
+                out.append(ref)
+    for m in _TICKET.finditer(text):
+        if m.group(1) not in _NOT_TICKETS and not m.group(1).isdigit():
+            ref = f"{m.group(1)}-{int(m.group(2))}"
+            if ref not in out:
+                out.append(ref)
+    return out
+
+
+def run_outcome(text: str, is_error: bool) -> bool | None:
+    """True if a test run passed, False if it failed, None if its output doesn't say."""
+    counts = [int(m.group(1)) for m in _FAIL_COUNT.finditer(text)]
+    if counts:
+        if any(counts):
+            return False
+    elif _FAIL_WORD.search(text) or is_error:
+        return False
+    return True if _PASSED.search(text) else None
+
+
 def is_noise(text: str) -> bool:
     """True for system/CLI text that shows up as a user turn but isn't something you typed."""
     t = text.strip()
@@ -60,6 +108,7 @@ class ParseStats:
     # Tasks created on earlier days, so one finished today is still known (per session, by task id).
     tasks_before: dict[str, dict[str, dict]] = field(default_factory=dict)
     pending_tasks: dict[str, tuple[str, str]] = field(default_factory=dict)  # tool_use_id -> (session, text)
+    pending_tests: dict[str, str] = field(default_factory=dict)  # tool_use_id of a test command -> session
 
 
 @dataclass
@@ -82,6 +131,9 @@ class SessionDay:
     # and repos named on the command line (gh -R owner/repo). Only used to find the project.
     work_dirs: Counter = field(default_factory=Counter)
     repo_slugs: Counter = field(default_factory=Counter)
+    refs: list[str] = field(default_factory=list)  # PR and ticket numbers
+    tests: list[bool | None] = field(default_factory=list)  # each test run's outcome, in order
+    turns: list[tuple[datetime, bool]] = field(default_factory=list)  # (time, is it your prompt) for Claude's time
     todos: list[dict] | None = None  # the last TodoWrite list of the day
     tasks: dict[str, dict] = field(default_factory=dict)  # TaskCreate/TaskUpdate tasks by id
     tasks_touched: set[str] = field(default_factory=set)
@@ -91,6 +143,36 @@ class SessionDay:
         ts = sorted(self.stamps)
         total = sum((b - a for a, b in zip(ts, ts[1:], strict=False) if b - a <= ACTIVE_GAP), timedelta())
         return round(total.total_seconds() / 60)
+
+    def claude_minutes(self) -> int:
+        """Minutes Claude spent answering: from each of your prompts to its last step before your next one
+        (gaps over ACTIVE_GAP don't count, like active time)."""
+        total, prev, busy = timedelta(), None, False
+        for ts, mine in sorted(self.turns):
+            if mine:
+                busy, prev = True, ts
+                continue
+            if busy and prev is not None and ts - prev <= ACTIVE_GAP:
+                total += ts - prev
+            prev = ts
+        return round(total.total_seconds() / 60)
+
+    def test_counts(self) -> dict[str, int]:
+        """{"runs", "failed", "fixed"}: a fix is a passing run after a failing one."""
+        runs, failed, fixed, red = len(self.tests), 0, 0, False
+        for ok in self.tests:
+            if ok is False:
+                failed += 1
+                red = True
+            elif ok is True and red:
+                fixed += 1
+                red = False
+        return {"runs": runs, "failed": failed, "fixed": fixed} if runs else {}
+
+    def add_refs(self, text: str, branch: bool = False) -> None:
+        for ref in find_refs(text, branch):
+            if ref not in self.refs and len(self.refs) < 20:
+                self.refs.append(ref)
 
     def task_list(self) -> list[dict]:
         """Claude Code's to-do items for this day: {"text", "status": "done"|"open"}."""
@@ -230,6 +312,20 @@ def _task_events(entry: dict, sid: str, tasks: dict[str, dict], stats: ParseStat
     return todos
 
 
+def _test_results(entry: dict, sd: SessionDay, stats: ParseStats) -> None:
+    msg = entry.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        if stats.pending_tests.pop(str(block.get("tool_use_id")), None) is None:
+            continue
+        raw = block.get("content")
+        text = raw if isinstance(raw, str) else " ".join(
+            b.get("text", "") for b in raw if isinstance(b, dict)) if isinstance(raw, list) else ""
+        sd.tests.append(run_outcome(text[-20_000:], block.get("is_error") is True))
+
+
 _CD = re.compile(r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)cd\s+(\"[^\"]+\"|'[^']+'|[^\s;&|)]+)")
 _GIT_C = re.compile(r"\bgit\s+-C\s+(\"[^\"]+\"|'[^']+'|[^\s;&|)]+)")
 _REPO_FLAG = re.compile(r"(?:\s-R|\s--repo)(?:\s+|=)([\w.-]+/[\w.-]+)")
@@ -302,6 +398,8 @@ def parse_transcript(
         if cwd:
             sd.cwd_counts[cwd] += 1
         if isinstance(entry.get("gitBranch"), str) and entry["gitBranch"]:
+            if entry["gitBranch"] not in sd.branches:
+                sd.add_refs(entry["gitBranch"], branch=True)
             sd.branches.add(entry["gitBranch"])
 
         etype = entry.get("type")
@@ -313,7 +411,13 @@ def parse_transcript(
             prompt = _user_prompt(entry)
             if prompt:
                 sd.prompts.append(prompt)
+                sd.turns.append((ts, True))
+                sd.add_refs(prompt)
+            else:
+                sd.turns.append((ts, False))  # tool results: Claude is still working
+                _test_results(entry, sd, stats)
         elif etype == "assistant":
+            sd.turns.append((ts, False))
             msg = entry.get("message")
             if not isinstance(msg, dict):
                 continue
@@ -332,7 +436,11 @@ def parse_transcript(
                         if isinstance(where, str) and where:
                             sd.work_dirs[str(Path(cwd or "", where).parent if fp else Path(cwd or "", where))] += 1
                     elif name == "Bash" and isinstance(inp.get("command"), str):
-                        dirs, slugs = command_places(inp["command"][:4000], cwd)
+                        command = inp["command"][:4000]
+                        sd.add_refs(command)
+                        if not entry.get("isSidechain") and _TEST_CMD.search(command):
+                            stats.pending_tests[str(block.get("id"))] = sid
+                        dirs, slugs = command_places(command, cwd)
                         for d in dirs:
                             sd.work_dirs[d] += 3  # an explicit cd counts more than a file read
                         for slug in slugs:
