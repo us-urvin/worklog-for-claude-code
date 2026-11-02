@@ -58,3 +58,37 @@ jobs:
       - run: pip install build twine
       - run: python -m build
       - run: twine check --strict dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  install:
+    # Install the built package into a fresh environment and use it like a new user (scripts/smoke_test.py).
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - run: python scripts/smoke_test.py dist/*.whl

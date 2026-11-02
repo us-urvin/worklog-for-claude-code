@@ -13,6 +13,46 @@ data (your transcripts, e-mail, tokens) from the report. You should get a first 
 volunteer project, so fixes are made on a best-effort basis; you will be credited in the advisory unless you
 prefer not to be.
 
+## Verify a release
+
+Every release is built and uploaded by GitHub Actions ([`release.yml`](.github/workflows/release.yml)) from a
+`vX.Y.Z` tag. No one uploads files by hand, and no PyPI password or token is stored anywhere: PyPI accepts the
+upload only from that workflow (Trusted Publishing). Before publishing, the workflow installs the built package on
+Linux, macOS and Windows and checks it works ([`scripts/smoke_test.py`](scripts/smoke_test.py)).
+
+You can check three things yourself. Replace `0.5.2` with the version you have.
+
+**1. The file on PyPI was built by this repository.** PyPI keeps a signed record (an attestation) of which
+repository and workflow built each file. Check it with the official tool:
+
+```bash
+pip install pypi-attestations
+pypi-attestations verify pypi --repository https://github.com/us-urvin/worklog-for-claude-code \
+  pypi:worklog_for_claude_code-0.5.2-py3-none-any.whl
+```
+
+It prints `OK` when the file was signed by this repository's release workflow, and fails otherwise. You can also
+see it on PyPI: open the release, **Download files**, then **View details** next to a file. It shows the
+repository, the workflow and the commit.
+
+**2. The file holds exactly the source code of the tag.** Download it and compare it with the source of that
+tag, file by file (SHA-256):
+
+```bash
+git clone --branch v0.5.2 https://github.com/us-urvin/worklog-for-claude-code && cd worklog-for-claude-code
+pip download --no-deps --only-binary :all: worklog-for-claude-code==0.5.2 -d dist
+python scripts/smoke_test.py dist/worklog_for_claude_code-0.5.2-py3-none-any.whl
+```
+
+Step 1 of the output says whether every file is identical. The script then installs the package in a throwaway
+environment, runs the demo and uninstalls it again, touching none of your files.
+
+**3. What you installed is that file.** `pip hash dist/*.whl` gives the SHA-256 shown on PyPI under
+**View details**.
+
+What it does not prove: that the code is free of bugs. For that, read it: it's about 30 Python files with no
+dependencies outside Python's standard library.
+
 ## Supported versions
 
 Only the latest release receives security fixes.

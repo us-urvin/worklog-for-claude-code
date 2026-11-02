@@ -73,12 +73,14 @@ A checklist shows anything still missing, with the exact command for your comput
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/share-card.jpg" alt="A share card: hours, sessions, projects and streak for the week"><br><b>A card to share</b> your week.</td>
 </tr></table>
 
-## Privacy
+## Privacy and trust
 
 - Only short notes are saved: the first 300 characters of your prompts, token counts, file names and commit messages. **Never your files or Claude's replies.**
 - Common secrets (API keys, passwords, e-mails) are blanked out before saving. This is best effort, so keep your data repo **private**.
 - Summaries and "Ask Claude" use your own Claude account. Turn AI off in Settings to stay fully offline.
 - The only other request: once a day, Worklog asks pypi.org whether a new version is out. Nothing about you is sent, and you can turn it off.
+- It's a **personal log, not a performance score**. Hours are your active time with Claude, not a measure of your output.
+- Every release is built and signed by GitHub, and checked on Linux, macOS and Windows before it's published. [Verify a release →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release)
 
 [Privacy in detail →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 

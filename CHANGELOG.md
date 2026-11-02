@@ -6,6 +6,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-03
+
+Trust release: no new features, more proof that the package is what it says.
+
+### Added
+- **Verify a release** (SECURITY.md): how to check that a file on PyPI was built and signed by this repository's
+  release workflow, that it holds exactly the source code of its tag, and that it's the file you installed.
+- **Install check before every release** (`scripts/smoke_test.py`): the built package is compared file by file with
+  the source, installed into a fresh environment with no other packages, started (demo pages, version, a refused
+  foreign Host), tested with `init` and `doctor`, and uninstalled. It runs on Linux, macOS and Windows in CI, and
+  the release workflow won't publish unless it passes everywhere.
+- **Security tests for the local page** (`tests/test_security.py`, 40 checks against a real server): other host
+  names (DNS rebinding) and other websites are refused, forms need the page's secret token, every page sends strict
+  security headers and runs only its own scripts, and HTML or JavaScript hidden in project names, prompts, file
+  names or searches is shown as text, never run.
+- README: "a personal log, not a performance score", and a link to verify releases.
+
 ## [0.5.1] - 2026-11-02
 
 ### Fixed
@@ -222,7 +239,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.0...v0.4.1
