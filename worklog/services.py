@@ -494,6 +494,48 @@ def configured_python() -> str | None:
         return None
 
 
+def configured_port(default: int = 8765) -> int:
+    """The port the installed web service listens on (from its unit, agent or Run entry)."""
+    import re
+    kind = system()
+    try:
+        if kind == "mac":
+            f = AGENT_DIR / f"{MAC_WEB}.plist"
+            text = " ".join(plistlib.loads(f.read_bytes())["ProgramArguments"]) if f.exists() else ""
+        elif kind == "windows":
+            text = _reg_get(RUN_VALUE) or ""
+        else:
+            f = UNIT_DIR / WEB
+            text = f.read_text(encoding="utf-8") if f.exists() else ""
+    except (OSError, ValueError, KeyError, plistlib.InvalidFileException):
+        text = ""
+    m = re.search(r"--port[ =](\d{2,5})", text)
+    return int(m.group(1)) if m else default
+
+
+def restart_hint() -> str:
+    """How to restart the web page by hand on this system (needed once after updating from before 0.3.2)."""
+    kind = system()
+    if kind == "mac":
+        return f"launchctl kickstart -k gui/$(id -u)/{MAC_WEB}"
+    if kind == "windows":
+        return "sign out of Windows and back in (or restart the computer)"
+    return f"systemctl --user restart {WEB.removesuffix('.service')}"
+
+
+def running_version(port: int, timeout: float = 2.0) -> str | None:
+    """The version the web page on this computer is running right now, or None if it doesn't answer."""
+    import json
+    from urllib.request import Request, urlopen
+    try:
+        req = Request(f"http://127.0.0.1:{port}/api/status", headers={"Host": f"127.0.0.1:{port}"})
+        with urlopen(req, timeout=timeout) as r:  # noqa: S310 - loopback only
+            v = json.loads(r.read(100_000).decode("utf-8")).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return v if isinstance(v, str) else None
+
+
 def report_timer_enabled() -> bool:
     try:
         return available() and backend().report_timer_enabled()

@@ -216,7 +216,7 @@ claude-worklog timesheet --from 2026-11-01 --to 2026-11-15 --account work --roun
 
 ## Updating
 
-When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Hooks and scheduled jobs start fresh every time, so they use the new version right away.
+When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Updating from 0.3.1 or older, restart the page once by hand instead (`systemctl --user restart claude-worklog-web` on Linux, `launchctl kickstart -k gui/$(id -u)/dev.worklog.web` on macOS, sign out and back in on Windows); `claude-worklog doctor` warns when the page still runs an older version. See [Troubleshooting](TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version). Hooks and scheduled jobs start fresh every time, so they use the new version right away.
 
 ## Command line
 
