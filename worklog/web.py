@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from . import __version__, chats, checks, forget, overrides, services, syncstatus, updates, viz, watcher
+from . import __version__, chats, checks, daycache, forget, overrides, services, syncstatus, updates, viz, watcher
 from .collector import collect
 from .config import (
     _NAME_RE,
@@ -887,23 +887,22 @@ def page_day(app: App, cfg: Config, day: date, edit_key: str | None = None) -> t
     known: dict[str, str] = {k: ov.names.get(k) or str(v.get("name") or k) for k, v in ov.projects.items()}
     chat_counts: dict[date, int] = {}
     activity: dict[date, int] = {}  # tokens per day (1 for a day with only chats): drives the calendar
-    for d in history_days:
-        per: dict[str, int] = {}
-        for r in store.iter_json(f"records/{d.isoformat()}"):
-            proj = r.get("project") or {}
+    cache = daycache.DayCache(store, cfg.time_mode)  # one small entry per day: no re-reading 5 weeks of records
+    for d, entry in cache.days(history_days[0], history_days[-1]).items():
+        per: dict[str, int] = dict(entry.get("tokens") or {})
+        for proj in entry.get("projects") or []:
             if proj.get("kind") in ("git", "custom"):
-                k = project_key(proj)
-                known.setdefault(k, ov.names.get(k) or project_title(proj))
-            if r.get("source") == "claude.ai":
-                chat_counts[d] = chat_counts.get(d, 0) + 1
-            name = r.get("account", "?")
-            per[name] = per.get(name, 0) + sum(v for v in (r.get("tokens") or {}).values() if isinstance(v, int))
+                known.setdefault(proj["key"], proj["name"])
+        if entry.get("chats"):
+            chat_counts[d] = entry["chats"]
+        for name in per:
             if name not in names:
                 names.append(name)  # account configured on another device only
         history.append((d, per))
         tokens_d = sum(per.values())
         if tokens_d or chat_counts.get(d):
             activity[d] = tokens_d or 1
+    cache.save()
     chart_history = history[-14:]
     streak = viz.streak(set(activity), day)
     fun = cfg.fun
