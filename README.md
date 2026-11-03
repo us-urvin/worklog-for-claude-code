@@ -100,7 +100,7 @@ A checklist shows anything still missing, with the exact command for your comput
 
 **It says Sonnet, but I use Opus?** The "By model" list shows what Claude Code really used. For better summaries, pick **Opus** in Settings → Summaries.
 
-**How do I update?** Click **Update now** when the dashboard says a new version is out. From a terminal: `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`, then click **Restart now** on the page. ([Still the old version?](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version))
+**How do I update?** Click **Update now** when the dashboard says a new version is out (it checks every 2 hours; **Check for updates** at the bottom of the page asks right away). From a terminal: `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`, then click **Restart now** on the page. ([Still the old version?](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version))
 
 **Something isn't working?** Run `claude-worklog doctor`, or see [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md).
 

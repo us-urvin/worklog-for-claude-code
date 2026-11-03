@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from worklog import ask, cli, config, daycache, identity, store, syncstatus
+from worklog import ask, cli, config, daycache, identity, store, syncstatus, updates
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def home(tmp_path, monkeypatch):
         monkeypatch.setenv(var, str(h / sub) if sub else str(h))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     state = h / ".local/state/claude-worklog"
-    for mod in (identity, store, cli, syncstatus, daycache, ask, config):
+    for mod in (identity, store, cli, syncstatus, daycache, ask, config, updates):
         monkeypatch.setattr(mod, "STATE_DIR", state)
     assert Path.home() == h  # guard: never run against the real home
     return h

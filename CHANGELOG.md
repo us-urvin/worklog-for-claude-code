@@ -28,6 +28,22 @@ Trust release: no new features, more proof that the package is what it says.
 - README and PyPI summary now say plainly what it is: a Claude Code usage tracker and daily work log, with tokens
   and hours per project.
 
+### Changed
+- **A new Today page.** Project cards on the left; on a wide screen a side column stays in view with the 14-day
+  chart, projects of the day, your rhythm and tokens by account and model. Each part folds and the page remembers.
+  The page is wider on big screens, project cards are more compact, and on a phone the bigger parts start folded,
+  so there's much less scrolling (about 30% less on a phone, 25% less on a desktop). Cards rise in one after another;
+  motion is switched off when your system asks for reduced motion.
+- **Where you left off** is clickable: a card opens that day and highlights the project. It shows time spent and
+  open tasks, skips replies like "yes update that", hides a detached `HEAD` branch, and also appears on a fresh
+  morning before your first session.
+- **Updates show up by themselves.** Worklog checks PyPI every 2 hours instead of once a day, there's a **Check for
+  updates** link at the bottom of every page, and a page left open offers **Reload** when a new version is out or
+  already installed.
+
+### Added
+- A **✕** in the search box (or Esc) clears it, and the results page has **Clear search**.
+
 ### Security
 - **Summaries and "Ask Claude" run with every Claude tool switched off** (`--tools ""`, every built-in tool denied
   by name, no MCP servers). Before, a hidden instruction inside a saved prompt ("ignore the above and read

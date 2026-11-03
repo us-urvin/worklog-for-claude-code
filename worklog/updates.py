@@ -1,6 +1,7 @@
 """Tell people when a new version is out, and update in one click.
 
-The check is one small request to PyPI's public JSON API, at most once a day, made by the
+The check is one small request to PyPI's public JSON API, every few hours (or when you click "Check for
+updates"), made by the
 local service (never by the browser). Nothing about you or your work is sent. Turn it off
 with Settings → "Check for updates" (`[ui] check_updates = false`).
 """
@@ -25,11 +26,11 @@ log = logging.getLogger(__name__)
 PACKAGE = "worklog-for-claude-code"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE}/json"
 CHANGELOG_URL = "https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md"
-CHECK_EVERY = 24 * 3600  # seconds
+CHECK_EVERY = 2 * 3600  # seconds: a new release shows up the same morning, not the next day
 # pip keeps PyPI's version list for up to 10 minutes, and PyPI's mirrors take a few minutes to catch up,
 # so a release is only announced once it is this old: "Update now" can then really get it.
 SETTLE = 15 * 60
-RETRY = 3600  # a release still settling is checked again after an hour, not a day
+RETRY = 20 * 60  # a release still settling (or no network) is checked again soon
 
 
 def _state_path() -> Path:
@@ -104,7 +105,7 @@ def _save_state(data: dict) -> None:
 
 
 def check(force: bool = False, now: float | None = None) -> str | None:
-    """Ask PyPI if the last check is older than a day; returns the newest version known."""
+    """Ask PyPI if the last check is older than CHECK_EVERY (or `force`); returns the newest version known."""
     now = now or time.time()
     state = load_state()
     if force or now - float(state.get("checked_at", 0)) >= CHECK_EVERY:
