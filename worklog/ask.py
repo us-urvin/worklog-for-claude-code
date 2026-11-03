@@ -15,7 +15,7 @@ import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .config import STATE_DIR, SUMMARIZER_CWD
+from .config import STATE_DIR
 from .redact import redact
 
 MAX_QUESTION = 500
@@ -260,7 +260,6 @@ def context(cache, question: str, today: date) -> tuple[str, list[date]]:
 
 def ask_claude(cfg, question: str, notes: str, today: date) -> str:
     """Claude's answer, or raises RuntimeError with a plain message."""
-    from .report import _claude_env
     exe = shutil.which(cfg.claude_bin)
     if not exe:
         raise RuntimeError("Claude Code isn't installed where Worklog can find it (Settings → Summaries).")
@@ -274,13 +273,9 @@ def ask_claude(cfg, question: str, notes: str, today: date) -> str:
         "[YYYY-MM-DD]. Words may have typos (e.g. 'reviewn' means 'reviewed'). If the notes don't contain the "
         "answer, say so in one sentence. Do not use any tools.\n\n"
         f"<question>\n{question[:MAX_QUESTION]}\n</question>\n\n<notes>\n{notes}\n</notes>")
-    SUMMARIZER_CWD.mkdir(parents=True, exist_ok=True)  # the collector never records these runs
-    cmd = [exe, "-p", prompt, "--output-format", "text"]
-    if cfg.summary_model:
-        cmd += ["--model", cfg.summary_model]
+    from .report import run_claude
     try:
-        out = subprocess.run(cmd, cwd=SUMMARIZER_CWD, env=_claude_env(cfg), capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=cfg.ai_timeout)
+        out = run_claude(cfg, exe, prompt)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(f"Claude didn't answer: {exc}") from None
     if out.returncode != 0 or not out.stdout.strip():

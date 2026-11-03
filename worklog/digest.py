@@ -26,9 +26,14 @@ def _h(minutes: int) -> str:
     return f"{h}h {m:02d}m" if h else f"{m}m"
 
 
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]<>!#~])")
+
+
 def _cell(text: str, n: int = 90) -> str:
+    """One line of plain text for the Markdown page: a prompt can't become a link, an image or HTML there."""
     text = " ".join(str(text or "").split()).replace("|", "/")
-    return text if len(text) <= n else text[: n - 1].rsplit(" ", 1)[0] + "…"
+    text = text if len(text) <= n else text[: n - 1].rsplit(" ", 1)[0] + "…"
+    return _MD_SPECIAL.sub(r"\\\1", text)
 
 
 def _day_section(title: str, e: dict) -> list[str]:

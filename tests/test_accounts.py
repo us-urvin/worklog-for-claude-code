@@ -54,6 +54,13 @@ def make_cfg(home: Path, repo: Path, extra: str = "") -> Config:
     return load_config(p)
 
 
+def record_for(repo: Path, account: str, sid: str) -> dict:
+    """A session's record whatever its day (sessions made a few minutes ago may be "yesterday" just after midnight)."""
+    found = [r for k, r in records(repo).items() if k.endswith(f"/dev1/{account}/{sid}.json")]
+    assert len(found) == 1, (account, sid, sorted(records(repo)))
+    return found[0]
+
+
 def records(repo: Path) -> dict[str, dict]:
     return {p.relative_to(repo).as_posix(): json.loads(p.read_text(encoding="utf-8"))
             for p in sorted(repo.rglob("records/**/*.json"))}

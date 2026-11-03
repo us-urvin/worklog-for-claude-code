@@ -1,0 +1,25 @@
+# Worklog for Claude Code
+
+> Free, open-source (MIT) Claude Code usage tracker and daily work log. It reads Claude Code's local session logs and shows, per project and day, what you did in plain words, tokens by account and model, and active hours, plus a timesheet export, search over past work, trends and share cards. It runs on your own computer; your data stays in your own private git repo.
+
+Install: `pipx install worklog-for-claude-code` (Python 3.10+, git; Linux, macOS, Windows). Command: `claude-worklog`. Dashboard: http://localhost:8765. Try on made-up data: `pipx run --spec worklog-for-claude-code claude-worklog demo`.
+
+## Facts
+- Source: https://github.com/us-urvin/worklog-for-claude-code
+- Package: https://pypi.org/project/worklog-for-claude-code/
+- Licence: MIT. Author: Urvin (https://github.com/us-urvin). Not affiliated with Anthropic.
+- Dependencies: Python standard library only (plus tomli on Python 3.10).
+- It does not estimate cost; it shows tokens and time only.
+
+## Privacy and security
+- Never stores file contents or Claude's replies; keeps the first 300 characters of prompts, token counts, file names and commit subjects, with common secrets redacted.
+- No telemetry. Network use: the user's own git remote, the user's own Claude account for optional AI summaries, and an optional daily version check on pypi.org.
+- AI summaries run `claude -p` with all tools disabled, so text inside prompts cannot make Claude read files or run commands.
+- The local web page binds to loopback only, checks the Host header (DNS rebinding), requires CSRF tokens and same-origin requests, and sends a strict Content-Security-Policy.
+- Releases are built by GitHub Actions with PyPI Trusted Publishing and attestations; anyone can verify a release: https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release
+
+## Docs
+- [README](https://github.com/us-urvin/worklog-for-claude-code/blob/main/README.md)
+- [Full guide](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md)
+- [Security policy and design](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md)
+- [Changelog](https://github.com/us-urvin/worklog-for-claude-code/blob/main/CHANGELOG.md)

@@ -2837,7 +2837,8 @@ class App:
                 return None, "That doesn't look like a git clone URL (use git@host:owner/repo.git or https://…).", form
             if store.exists() and any(store.iterdir()):
                 return None, f"{home_relative(store)} already exists and isn't empty.", form
-            env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+            from .config import GIT_ALLOWED_PROTOCOLS
+            env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_ALLOW_PROTOCOL=GIT_ALLOWED_PROTOCOLS)
             env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15")
             try:
                 r = subprocess.run(["git", "clone", "--", clone, str(store)], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=env)

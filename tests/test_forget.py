@@ -3,7 +3,18 @@ import json
 from datetime import datetime, timedelta
 
 import pytest
-from test_accounts import EMAIL_A, EMAIL_B, UID_A, UID_B, login, make_cfg, records, start_session, transcript
+from test_accounts import (
+    EMAIL_A,
+    EMAIL_B,
+    UID_A,
+    UID_B,
+    login,
+    make_cfg,
+    record_for,
+    records,
+    start_session,
+    transcript,
+)
 
 from worklog import collector, forget, identity, watcher, web
 from worklog.config import load_config, save_config
@@ -109,8 +120,8 @@ def test_forget_finds_sessions_the_watcher_matched(isolated, repo):
         w.step(now=t)
         t += timedelta(seconds=30)
     transcript(isolated, "s-w", now - timedelta(minutes=10), isolated)
-    collector.collect(cfg, [now.date()])
-    rec = records(repo)[f"records/{now.date().isoformat()}/dev1/work/s-w.json"]
+    collector.collect(cfg, [now.date() - timedelta(days=1), now.date()])  # just after midnight it's yesterday's
+    rec = record_for(repo, "work", "s-w")
     assert rec["account_source"] == "watcher"
     p = forget.plan(cfg, identity.ref(UID_B))
     assert p.sessions == {"s-w"} and p.account == "work"

@@ -26,6 +26,23 @@ STATE_DIR = _xdg("XDG_STATE_HOME", ".local/state") / "claude-worklog"  # logs, l
 DATA_DIR = _xdg("XDG_DATA_HOME", ".local/share") / "claude-worklog"  # summarizer cwd
 SUMMARIZER_CWD = DATA_DIR / "summarizer"
 
+# Git may only use these transports. "ext::" and "fd::" can run commands, so a pasted clone URL or a changed
+# remote must never be able to use them (git blocks ext by default; this makes it explicit for every git call).
+GIT_ALLOWED_PROTOCOLS = "https:ssh:git:file"
+
+
+def private_dir(path: Path) -> Path:
+    """Create `path` so only you can open it (0700 on Linux and macOS; Windows keeps your profile private)."""
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name == "posix":
+        try:
+            if path.stat().st_mode & 0o077:
+                path.chmod(0o700)  # also tightens a folder made by an older version
+        except OSError:
+            pass
+    return path
+
+
 # Claude Code's default config dir. For this one we must NOT set CLAUDE_CONFIG_DIR,
 # because the default install keeps some state outside it (e.g. ~/.claude.json).
 DEFAULT_CLAUDE_DIR = Path.home() / ".claude"

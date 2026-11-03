@@ -124,9 +124,7 @@ def test_trends_and_ask_pages(two_weeks, home, monkeypatch):
     html = web.page_ask(app, cfg, {"q": "review PR 505"})
     assert "Found" in html and "xoo" in html
     assert "Ask Claude" not in html  # AI is off in this config: search only
-    body, _ = web.page_day(app, cfg, TODAY)
-    if TODAY == monday:
-        assert "Where you left off" in body
+    body, _ = web.page_day(app, cfg, monday)  # the fixture's sessions are on Monday; TODAY may be any day
     assert 'action="/ask"' in body
 
 
