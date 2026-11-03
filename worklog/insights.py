@@ -6,8 +6,6 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from . import cost
-
 
 @dataclass
 class Period:
@@ -23,7 +21,6 @@ class Period:
     tests_runs: int = 0
     tests_fixed: int = 0
     claude: int = 0
-    dollars: float = 0.0
     hours: list = field(default_factory=lambda: [0] * 24)
     models: Counter = field(default_factory=Counter)  # model -> tokens
     by_day: dict = field(default_factory=dict)  # date -> minutes
@@ -35,7 +32,7 @@ class Period:
         return f"{self.start:%d %b} – {self.end:%d %b}"
 
 
-def period(entries: dict[date, dict], start: date, end: date, custom_prices=None) -> Period:
+def period(entries: dict[date, dict], start: date, end: date) -> Period:
     p = Period(start, end)
     d = start
     while d <= end:
@@ -51,7 +48,6 @@ def period(entries: dict[date, dict], start: date, end: date, custom_prices=None
                     p.hours[i] += m
             for model, t in (e.get("models") or {}).items():
                 p.models[model] += sum(t.values())
-            p.dollars += cost.estimate(e.get("models") or {}, custom_prices)[0]
             for proj in e.get("projects") or []:
                 p.projects[proj["name"]] += proj["minutes"]
                 if proj.get("tag"):
@@ -218,9 +214,9 @@ def badges(entries: dict[date, dict]) -> list[dict]:
 
 
 # ------------------------------------------------------------------ year in review
-def year_review(entries: dict[date, dict], year: int, custom_prices=None) -> dict:
+def year_review(entries: dict[date, dict], year: int) -> dict:
     start, end = date(year, 1, 1), date(year, 12, 31)
-    p = period(entries, start, end, custom_prices)
+    p = period(entries, start, end)
     months = [0] * 12
     busiest: tuple[int, date | None] = (0, None)
     for d, m in p.by_day.items():

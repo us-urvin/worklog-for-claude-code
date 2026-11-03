@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from test_accounts import EMAIL_A, EMAIL_B, UID_A, UID_B, login, make_cfg, records, transcript
+from test_accounts import EMAIL_A, EMAIL_B, UID_A, UID_B, login, make_cfg, record_for, records, transcript
 
 from worklog import collector, identity, watcher, web
 from worklog.config import load_config
@@ -100,11 +100,10 @@ def test_collect_uses_the_watcher_when_the_hook_is_missing(home, repo, wstate, m
     login(home, UID_B, EMAIL_B)  # switched by some tool
     keep_running(w, now - timedelta(minutes=5), now)
     transcript(home, "s-work", (now - timedelta(minutes=3)).astimezone(), home)
-    collector.collect(cfg, [now.astimezone().date()])
-    recs = records(repo)
-    d = now.astimezone().date().isoformat()
-    assert recs[f"records/{d}/dev1/work/s-work.json"]["account_source"] == "watcher"
-    assert recs[f"records/{d}/dev1/personal/s-personal.json"]["account_source"] == "watcher"
+    day = now.astimezone().date()
+    collector.collect(cfg, [day - timedelta(days=1), day])  # just after midnight a session may be yesterday's
+    assert record_for(repo, "work", "s-work")["account_source"] == "watcher"
+    assert record_for(repo, "personal", "s-personal")["account_source"] == "watcher"
 
 
 def test_hook_record_beats_the_watcher(home, repo, wstate, monkeypatch, capsys):
@@ -120,8 +119,9 @@ def test_hook_record_beats_the_watcher(home, repo, wstate, monkeypatch, capsys):
     login(home, UID_A, EMAIL_A)  # switched back before the watcher looked
     keep_running(w, now - timedelta(minutes=9), now)
     transcript(home, "s1", (now - timedelta(minutes=8)).astimezone(), home)
-    collector.collect(cfg, [now.astimezone().date()])
-    rec = records(repo)[f"records/{now.astimezone().date().isoformat()}/dev1/work/s1.json"]
+    day = now.astimezone().date()
+    collector.collect(cfg, [day - timedelta(days=1), day])
+    rec = record_for(repo, "work", "s1")
     assert rec["account_source"] == "hook"
 
 

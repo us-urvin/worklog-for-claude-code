@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://us-urvin.github.io/worklog-for-claude-code/sitemap.xml

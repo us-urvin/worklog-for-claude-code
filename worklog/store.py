@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from . import syncstatus
-from .config import STATE_DIR, ConfigError
+from .config import GIT_ALLOWED_PROTOCOLS, STATE_DIR, ConfigError
 from .locks import exclusive
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class GitStore:
             )
         env = dict(os.environ)
         env["GIT_TERMINAL_PROMPT"] = "0"  # never hang waiting for a password (hooks/cron)
+        env["GIT_ALLOW_PROTOCOL"] = GIT_ALLOWED_PROTOCOLS  # never ext:: or fd::, which can run commands
         env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15")
         self._env = env
 

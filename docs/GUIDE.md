@@ -221,24 +221,20 @@ claude-worklog timesheet --from 2026-11-01 --to 2026-11-15 --account work --roun
 
 **Trends** (top menu) compares this week, or month, with the one before. While a week is still running, it's compared with the same days of last week. It shows:
 - hours per week (or month) as a chart; click a bar to look at that week
-- hours, sessions, tokens and the cost at API prices, each with the change in %
+- hours, sessions, tokens and active days, each with the change in %
 - **In short**: a few plain sentences, worked out on your computer (no AI)
 - when you worked, your projects and the kind of work
 
-**Where you left off** sits at the top of Today: the last three projects, what you were doing (the summary line or your last prompt), PR and ticket numbers, the branch and open tasks.
+**Where you left off** sits at the top of Today, even before your first session of the day: the last three projects, what you were doing (the summary line, or your last prompt that says something: replies like "yes update that" are skipped), time spent, open tasks, PR and ticket numbers and the branch. Click a card to open that day at the project.
+
+**The Today page** shows your project cards on the left and, on a wide screen, a side column that stays in view: the 14-day chart, projects of the day, your rhythm (clock and last 5 weeks) and tokens by account and model. Each part folds open and closed, and the page remembers. On a phone it's one column, with the bigger parts folded at first. **Sync now**, **Write summaries** and the 📅 date picker sit next to the day arrows. The ✕ in the search box (or Esc) clears it.
 
 **Ask your worklog** (the box on Today and Trends) searches at once, on your computer. It looks in project names, summaries, PR and ticket numbers, open tasks and your prompts of the last 60 days. Small typos and other word endings still match ("setlement" finds "settlement", "review" finds "reviewed"), and "PR" also finds "pull request". The best matches come first and the matching words are highlighted. It understands phrases like "yesterday", "last week", "October" or "last 10 days". With AI summaries on, tick **Ask Claude** next to the box and Search always gives a short written answer, with links to the days; leave it unticked for the quick search. It reads a small excerpt of your saved notes for those days (never your code), using the account and model chosen for summaries. The last 20 answers stay on this computer. From the terminal: `claude-worklog ask "what did I do last week?"` (add `--claude` for a written answer).
 
 **More on each card**:
-- PR and ticket numbers such as `#505` or `XOO2-295`, found in your prompts, commands and branch names. `#505` links to the repo's pull request. Tickets link to your tracker once you set **Settings → Links and cost**.
+- PR and ticket numbers such as `#505` or `XOO2-295`, found in your prompts, commands and branch names. `#505` links to the repo's pull request. Tickets link to your tracker once you set **Settings → Links**.
 - **Tests**: how many test runs Claude did that day, and how many failing runs it fixed.
 - **Claude / you**: how much of the time Claude was working and how much was yours.
-- **At API prices**: what the tokens would cost at Anthropic's API prices. On Pro and Max plans this is only a comparison, because usage counts against your limits instead. A model without a known price is left out rather than guessed. Set other prices in the config:
-
-  ```toml
-  [cost]
-  "claude-opus-5-5" = [4.0, 20.0]   # input, output per million tokens
-  ```
 
 **Goals** (Settings → Goals): hours of work per day, and a weekly token limit to stay inside your plan. Today shows a ring for each. The token ring turns red at 80%. Meeting the hours goal several days in a row shows a goal streak; days off don't break it.
 
@@ -265,7 +261,7 @@ It updates after every sync (hourly, and when a session ends) and after the nigh
 
 ## Updating
 
-When a new version is out, the dashboard shows **Worklog x.y is out** with an **Update now** button. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Updating from 0.3.1 or older, restart the page once by hand instead (`systemctl --user restart claude-worklog-web` on Linux, `launchctl kickstart -k gui/$(id -u)/dev.worklog.web` on macOS, sign out and back in on Windows); `claude-worklog doctor` warns when the page still runs an older version. See [Troubleshooting](TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version). Hooks and scheduled jobs start fresh every time, so they use the new version right away.
+Worklog asks PyPI every 2 hours whether a new version is out (click **Check for updates** at the bottom of any page to ask now). When one is, the dashboard shows **Worklog x.y is out** with an **Update now** button; a page left open notices it too and offers **Reload**. A release is announced about 15 minutes after it's published, once PyPI has it everywhere. It upgrades the installed package (with `pipx upgrade`, or `pip` inside a virtual environment), restarts the web UI on the new version and reloads the page. For other installs it shows the command to run instead. From a terminal, `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code` always works (skipping pip's cache means a release from a few minutes ago is found too); the running page then offers **Restart now**. Updating from 0.3.1 or older, restart the page once by hand instead (`systemctl --user restart claude-worklog-web` on Linux, `launchctl kickstart -k gui/$(id -u)/dev.worklog.web` on macOS, sign out and back in on Windows); `claude-worklog doctor` warns when the page still runs an older version. See [Troubleshooting](TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version). Hooks and scheduled jobs start fresh every time, so they use the new version right away.
 
 ## Command line
 

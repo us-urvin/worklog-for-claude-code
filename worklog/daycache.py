@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -23,7 +24,7 @@ from .parser import zero_tokens
 
 log = logging.getLogger(__name__)
 
-VERSION = 1
+VERSION = 2  # 2: "doing" (the last prompt that says what you were doing)
 KEEP_DAYS = 400
 
 
@@ -121,6 +122,7 @@ def summarize(store, day: date, ov, time_mode: str = "active") -> dict:
             "open": [t["text"] for t in p.tasks if t["status"] == "open"][:8],
             "done": sum(1 for t in p.tasks if t["status"] == "done"),
             "last_prompt": p.prompts[-1][1].splitlines()[0][:160] if p.prompts else "",
+            "doing": doing_prompt(p.prompts),
             "last": _hhmm(last) if last else "",
         })
     out_projects.sort(key=lambda x: -x["minutes"])
@@ -139,6 +141,18 @@ def summarize(store, day: date, ov, time_mode: str = "active") -> dict:
         "last": _hhmm(max(ends)) if ends else "",
     }
 
+
+_FILLER = re.compile(r"^(?:y(?:es|ep|eah)?|no|ok(?:ay)?|sure|thanks?|thank you|go(?: ahead)?|continue|do it|done|"
+                     r"proceed|perfect|great|nice|cool|right|correct|good|fine|please|lgtm)\b", re.I)
+
+
+def doing_prompt(prompts: list) -> str:
+    """The last prompt that says what you were doing: replies such as "yes update that" or "ok continue" are skipped."""
+    for _, text in reversed(prompts or []):
+        first = " ".join(str(text).split())
+        if len(first) >= 24 and len(first.split()) >= 4 and not (_FILLER.match(first) and len(first) < 60):
+            return first[:160]
+    return " ".join(str(prompts[-1][1]).split())[:160] if prompts else ""
 
 class DayCache:
     """Read with `get(day)` / `days(start, end)`; call `save()` once at the end (only writes if something changed)."""

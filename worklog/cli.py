@@ -12,7 +12,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from . import __version__
-from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config
+from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config, private_dir
 from .hooks import HOOK_EVENTS, default_model, install_hook, installed_events
 from .services import _detached
 
@@ -20,7 +20,8 @@ log = logging.getLogger("worklog")
 
 
 def _setup_logging(verbose: bool, quiet: bool = False) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    private_dir(STATE_DIR)  # logs, the day cache, your questions: only you can read them
+    private_dir(CONFIG_PATH.parent)
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
     fh = RotatingFileHandler(STATE_DIR / "worklog.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")

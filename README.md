@@ -2,11 +2,17 @@
 
 **Your Claude Code work, written down for you: what you did each day, how long it took, and what it used.**
 
+A free, open-source **Claude Code usage tracker** and **daily work log**: tokens and hours **per project**, a timesheet, and plain-language summaries of what you did, across all your Claude accounts and computers. It runs on your computer and keeps your data in your own private git repo.
+
 [![Downloads](https://static.pepy.tech/badge/worklog-for-claude-code)](https://pepy.tech/project/worklog-for-claude-code)
 [![PyPI](https://img.shields.io/pypi/v/worklog-for-claude-code)](https://pypi.org/project/worklog-for-claude-code/)
 [![GitHub stars](https://img.shields.io/github/stars/us-urvin/worklog-for-claude-code?style=flat)](https://github.com/us-urvin/worklog-for-claude-code/stargazers)
 [![CI](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml/badge.svg)](https://github.com/us-urvin/worklog-for-claude-code/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/us-urvin/worklog-for-claude-code/badge)](https://scorecard.dev/viewer/?uri=github.com/us-urvin/worklog-for-claude-code)
+[![Signed releases](https://img.shields.io/badge/releases-signed%20%26%20verified-brightgreen)](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release)
+
+🌐 **[Website](https://us-urvin.github.io/worklog-for-claude-code/)** · 📦 **[PyPI](https://pypi.org/project/worklog-for-claude-code/)**
 
 ![A tour of Worklog: today, project summaries, editing a project, trends, ask, timesheet and a share card](https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/demo.gif)
 
@@ -66,19 +72,21 @@ A checklist shows anything still missing, with the exact command for your comput
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/card.png" alt="A project card with a plain-language summary, tag, PR links and Claude's task list"><br><b>Every project, in plain words</b>, with tasks and PRs.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/leaveoff.png" alt="Goals and where you left off"><br><b>Goals and where you left off</b>, at the top of Today.</td>
 </tr><tr>
-<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions, tokens and cost compared with last week, in plain sentences"><br><b>Trends</b>, compared with last week.</td>
+<td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/trends.png" alt="Trends: hours, sessions and tokens compared with last week, in plain sentences"><br><b>Trends</b>, compared with last week.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/ask.png" alt="Ask your worklog: search results for a question"><br><b>Ask your worklog</b> anything about past work.</td>
 </tr><tr>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/timesheet.png" alt="Timesheet: hours, kind of work and a one-line summary per day and project"><br><b>A timesheet</b>, ready for Excel.</td>
 <td width="50%"><img src="https://raw.githubusercontent.com/us-urvin/worklog-for-claude-code/main/docs/images/share-card.jpg" alt="A share card: hours, sessions, projects and streak for the week"><br><b>A card to share</b> your week.</td>
 </tr></table>
 
-## Privacy
+## Privacy and trust
 
 - Only short notes are saved: the first 300 characters of your prompts, token counts, file names and commit messages. **Never your files or Claude's replies.**
 - Common secrets (API keys, passwords, e-mails) are blanked out before saving. This is best effort, so keep your data repo **private**.
 - Summaries and "Ask Claude" use your own Claude account. Turn AI off in Settings to stay fully offline.
 - The only other request: once a day, Worklog asks pypi.org whether a new version is out. Nothing about you is sent, and you can turn it off.
+- It's a **personal log, not a performance score**. Hours are your active time with Claude, not a measure of your output.
+- Every release is built and signed by GitHub, and checked on Linux, macOS and Windows before it's published. [Verify a release →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/SECURITY.md#verify-a-release)
 
 [Privacy in detail →](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md#privacy)
 
@@ -92,7 +100,7 @@ A checklist shows anything still missing, with the exact command for your comput
 
 **It says Sonnet, but I use Opus?** The "By model" list shows what Claude Code really used. For better summaries, pick **Opus** in Settings → Summaries.
 
-**How do I update?** Click **Update now** when the dashboard says a new version is out. From a terminal: `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`, then click **Restart now** on the page. ([Still the old version?](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version))
+**How do I update?** Click **Update now** when the dashboard says a new version is out (it checks every 2 hours; **Check for updates** at the bottom of the page asks right away). From a terminal: `pipx upgrade --pip-args=--no-cache-dir worklog-for-claude-code`, then click **Restart now** on the page. ([Still the old version?](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md#i-updated-but-the-page-still-shows-the-old-version))
 
 **Something isn't working?** Run `claude-worklog doctor`, or see [Troubleshooting](https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/TROUBLESHOOTING.md).
 
