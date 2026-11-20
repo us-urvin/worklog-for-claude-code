@@ -6,6 +6,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- **Windows: no more terminal windows flashing open and closed.** Background work (the hourly collect, the web UI
+  started at login or right after install, the collect after each Claude Code session and the nightly report) runs
+  without a console, so each `git`, `ssh`, `schtasks` or `claude` it started opened a Windows Terminal window for a
+  moment. Every child process now starts with `CREATE_NO_WINDOW` (`worklog/proc.py`), and background workers are
+  no longer started with `DETACHED_PROCESS`, which made Windows ignore that flag. A test checks that every
+  `subprocess` call in the package passes it.
+
 ## [0.5.2] - 2026-11-03
 
 Trust release: no new features, more proof that the package is what it says.

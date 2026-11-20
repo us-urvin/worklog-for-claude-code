@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 
 from . import __version__
 from .config import STATE_DIR
+from .proc import NO_WINDOW
 
 log = logging.getLogger(__name__)
 
@@ -194,7 +195,7 @@ def upgrade(timeout: int = 300) -> tuple[bool, str]:
     if cmd is None:
         return False, f"Update this install by hand: {manual_command()}"
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"Update failed: {exc}. Try by hand: {manual_command()}"
     if r.returncode != 0:
@@ -221,7 +222,7 @@ def installed_version() -> str:
     try:
         r = subprocess.run([sys.executable, "-c", "import worklog; print(worklog.__version__)"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
-                           cwd=str(Path.home()))
+                           cwd=str(Path.home()), **NO_WINDOW)
         return r.stdout.strip() or __version__
     except (OSError, subprocess.TimeoutExpired):
         return __version__

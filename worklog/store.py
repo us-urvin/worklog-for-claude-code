@@ -17,6 +17,7 @@ from pathlib import Path
 from . import syncstatus
 from .config import GIT_ALLOWED_PROTOCOLS, STATE_DIR, ConfigError
 from .locks import exclusive
+from .proc import NO_WINDOW
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class GitStore:
         return subprocess.run(
             ["git", "-C", str(self.path), *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, check=check,
-            env=self._env,
+            env=self._env, **NO_WINDOW,
         )
 
     def _has_remote(self) -> bool:

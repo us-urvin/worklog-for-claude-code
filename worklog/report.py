@@ -15,6 +15,7 @@ from . import overrides
 from .config import DEFAULT_CLAUDE_DIR, SUMMARIZER_CWD, Config
 from .overrides import Overrides
 from .parser import is_noise, zero_tokens
+from .proc import NO_WINDOW
 from .redact import redact
 from .store import GitStore
 from .tags import tag_session, top_tag
@@ -316,7 +317,8 @@ def run_claude(cfg: Config, exe: str, prompt: str) -> subprocess.CompletedProces
     out = None
     for flags in NO_TOOLS:
         out = subprocess.run(base + flags, cwd=SUMMARIZER_CWD, env=_claude_env(cfg), capture_output=True, text=True,
-                             stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace", timeout=cfg.ai_timeout)
+                             stdin=subprocess.DEVNULL, encoding="utf-8", errors="replace", timeout=cfg.ai_timeout,
+                             **NO_WINDOW)
         if not (out.returncode != 0 and "unknown option" in (out.stderr or "").lower()):
             return out
         log.info("claude doesn't know %s; trying the older way to switch tools off", flags[0])

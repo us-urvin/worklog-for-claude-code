@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from .config import SUMMARIZER_CWD, Account, Config, home_relative
 from .identity import Identity, forgotten_sessions, load_state, session_logins
 from .parser import ParseStats, SessionDay, parse_transcript
+from .proc import NO_WINDOW
 from .redact import redact
 from .store import GitStore
 from .watcher import load_state as watch_state
@@ -106,7 +107,7 @@ def sanitize_remote(url: str) -> dict | None:
 def _git(root: Path, *args: str) -> str | None:
     try:
         out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8",
-                             errors="replace", timeout=15)
+                             errors="replace", timeout=15, **NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired) as exc:
         log.debug("git %s failed in %s: %s", args[0], root, exc)
         return None

@@ -14,6 +14,7 @@ from pathlib import Path
 from . import __version__
 from .config import CONFIG_PATH, STATE_DIR, ConfigError, example_config, load_config, private_dir
 from .hooks import HOOK_EVENTS, default_model, install_hook, installed_events
+from .proc import NO_WINDOW
 from .services import _detached
 
 log = logging.getLogger("worklog")
@@ -69,7 +70,8 @@ def cmd_doctor(args) -> int:
     git_dir = cfg.store_repo / ".git"
     if git_dir.exists():
         remote = subprocess.run(["git", "-C", str(cfg.store_repo), "remote"],
-                                capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
+                                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                **NO_WINDOW).stdout.strip()
         print(f"✓ store repo: {cfg.store_repo} (remote: {remote or 'none — local only'})")
     else:
         ok = False
@@ -198,7 +200,7 @@ def ask_for_star(input_fn=input) -> None:
     if gh:  # the GitHub CLI, if you're logged in to it: star with your own account
         try:
             r = subprocess.run([gh, "api", "--silent", "--method", "PUT", f"/user/starred/{REPO}"],
-                               capture_output=True, text=True, errors="replace", timeout=20)
+                               capture_output=True, text=True, errors="replace", timeout=20, **NO_WINDOW)
             if r.returncode == 0:
                 print("  ⭐ Starred with your GitHub account. Thank you!")
                 return
