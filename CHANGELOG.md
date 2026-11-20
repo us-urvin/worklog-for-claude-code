@@ -6,6 +6,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- **Windows: `claude-worklog doctor` no longer crashes in Git Bash, in a CI log or when its output is saved to a
+  file.** That output used the Windows code page (such as cp1252), which has no `✓`, so the first line raised
+  `UnicodeEncodeError`. Output that goes to a pipe or a file is now UTF-8, as it is by default from Python 3.15 on,
+  and a character a console can't show becomes `?` instead of stopping the command.
+
 ## [0.5.3] - 2026-11-21
 
 ### Fixed
