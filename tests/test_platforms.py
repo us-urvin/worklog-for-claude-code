@@ -210,7 +210,8 @@ def test_data_repo_gets_line_ending_rules(repo):
 def test_detach_flags_per_os(monkeypatch):
     assert services._detached() == {"start_new_session": True}
     monkeypatch.setattr(services.sys, "platform", "win32")
-    assert services._detached()["creationflags"] & 0x00000008
+    flags = services._detached()["creationflags"]
+    assert flags & 0x08000000 and not flags & 0x00000008  # NO_WINDOW, and never DETACHED_PROCESS (see proc.py)
 
 
 def test_doctor_spots_a_service_pointing_at_a_missing_python(monkeypatch, fake, home, repo, capsys):

@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .proc import NO_WINDOW, detached
+
 UNIT_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "systemd" / "user"
 WEB, COLLECT, REPORT = "claude-worklog-web.service", "claude-worklog-collect.timer", "claude-worklog-report.timer"
 # Set by `claude-worklog demo`: the demo must never start, stop or enable the user's real services.
@@ -38,7 +40,7 @@ def system() -> str:
 def _run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     if demo_mode():
         raise RuntimeError("background services are disabled in demo mode")
-    return subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+    return subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, **NO_WINDOW)
 
 
 def _python(windowless: bool = False) -> str:
@@ -365,10 +367,7 @@ def _reg_set(name: str, value: str | None) -> None:
 
 def _detached() -> dict:
     """Popen keyword arguments that start a process which outlives us and opens no window."""
-    if system() == "windows":
-        flags = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED_PROCESS | NEW_PROCESS_GROUP | NO_WINDOW
-        return {"creationflags": flags, "close_fds": True}
-    return {"start_new_session": True}
+    return detached()  # see proc.detached for why this is not DETACHED_PROCESS on Windows
 
 
 class _WindowsTasks:

@@ -23,6 +23,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from .config import STATE_DIR, Config
+from .proc import NO_WINDOW
 
 VISIBILITY_TTL = 6 * 3600
 # What ssh -G lists when ~/.ssh/config names no key for a host.
@@ -71,7 +72,7 @@ def _git(repo: Path, *args: str, timeout: int = 10) -> tuple[int, str, str]:
     env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=15")
     try:
         r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout, env=env)
+                           errors="replace", timeout=timeout, env=env, **NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 1, "", str(exc)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
@@ -116,7 +117,7 @@ def resolve_ssh(alias: str, ssh: list[str] | None = None) -> dict:
     if shutil.which(ssh[0]):
         try:
             r = subprocess.run([*ssh, "-G", alias], capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=5, stdin=subprocess.DEVNULL)
+                               errors="replace", timeout=5, stdin=subprocess.DEVNULL, **NO_WINDOW)
             keys = []
             for line in r.stdout.splitlines() if r.returncode == 0 else []:
                 k, _, v = line.partition(" ")
@@ -208,7 +209,7 @@ def ssh_account(cfg: Config, timeout: int = 20) -> str | None:
     try:
         r = subprocess.run([*ssh, "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL, **NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired):
         return None
     text = f"{r.stdout}\n{r.stderr}"

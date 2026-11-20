@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import STATE_DIR, Config, home_relative
+from .proc import NO_WINDOW
 
 CLAUDE_INSTALL_URL = "https://code.claude.com/docs"
 GUIDE_URL = "https://github.com/us-urvin/worklog-for-claude-code/blob/main/docs/GUIDE.md"
@@ -142,7 +143,8 @@ def run(cfg: Config | None, watcher_running: bool = False, kind: str | None = No
 
 def _git_out(cmd: list[str]) -> str:
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+                           **NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
