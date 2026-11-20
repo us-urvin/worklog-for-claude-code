@@ -38,7 +38,7 @@ Every release is built and uploaded by GitHub Actions ([`release.yml`](.github/w
 upload only from that workflow (Trusted Publishing). Before publishing, the workflow installs the built package on
 Linux, macOS and Windows and checks it works ([`scripts/smoke_test.py`](scripts/smoke_test.py)).
 
-You can check three things yourself. Replace `0.5.3` with the version you have.
+You can check three things yourself. Replace `0.5.4` with the version you have.
 
 **1. The file on PyPI was built by this repository.** PyPI keeps a signed record (an attestation) of which
 repository and workflow built each file. Check it with the official tool:
@@ -46,7 +46,7 @@ repository and workflow built each file. Check it with the official tool:
 ```bash
 pip install pypi-attestations
 pypi-attestations verify pypi --repository https://github.com/us-urvin/worklog-for-claude-code \
-  pypi:worklog_for_claude_code-0.5.3-py3-none-any.whl
+  pypi:worklog_for_claude_code-0.5.4-py3-none-any.whl
 ```
 
 It prints `OK` when the file was signed by this repository's release workflow, and fails otherwise. You can also
@@ -57,9 +57,9 @@ repository, the workflow and the commit.
 tag, file by file (SHA-256, ignoring Windows/Unix line endings):
 
 ```bash
-git clone --branch v0.5.3 https://github.com/us-urvin/worklog-for-claude-code && cd worklog-for-claude-code
-pip download --no-deps --only-binary :all: worklog-for-claude-code==0.5.3 -d dist
-python scripts/smoke_test.py dist/worklog_for_claude_code-0.5.3-py3-none-any.whl
+git clone --branch v0.5.4 https://github.com/us-urvin/worklog-for-claude-code && cd worklog-for-claude-code
+pip download --no-deps --only-binary :all: worklog-for-claude-code==0.5.4 -d dist
+python scripts/smoke_test.py dist/worklog_for_claude_code-0.5.4-py3-none-any.whl
 ```
 
 Step 1 of the output says whether every file is identical. The script then installs the package in a throwaway

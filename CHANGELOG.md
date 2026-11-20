@@ -6,6 +6,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-11-21
+
 ### Fixed
 - **Windows: `claude-worklog doctor` no longer crashes in Git Bash, in a CI log or when its output is saved to a
   file.** That output used the Windows code page (such as cp1252), which has no `✓`, so the first line raised
@@ -299,7 +301,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...v0.5.1
