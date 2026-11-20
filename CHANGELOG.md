@@ -6,6 +6,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-21
+
 ### Fixed
 - **Windows: no more terminal windows flashing open and closed.** Background work (the hourly collect, the web UI
   started at login or right after install, the collect after each Claude Code session and the nightly report) runs
@@ -291,7 +293,8 @@ First public release, published on PyPI as `worklog-for-claude-code`. The comman
 - Best-effort redaction of API keys, tokens, JWTs, private keys, `password=` pairs, credentials in URLs,
   e-mail addresses and IPv4 addresses in prompts and commit subjects.
 
-[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/us-urvin/worklog-for-claude-code/compare/v0.4.1...v0.5.0
