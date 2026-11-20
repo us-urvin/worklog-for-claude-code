@@ -20,6 +20,26 @@ from .services import _detached
 log = logging.getLogger("worklog")
 
 
+def _safe_stdio() -> None:
+    """Never crash on a character the terminal can't show.
+
+    On Windows, output that goes to a pipe or a file (Git Bash, a redirect, a CI log) uses the ANSI code page,
+    such as cp1252, which has no ✓ or →, so printing one raised UnicodeEncodeError. Redirected output becomes
+    UTF-8, as it is by default from Python 3.15 on. Anything a stream still can't encode is replaced, not fatal.
+    Under pythonw the streams are None, so there is nothing to do.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            if not stream.isatty() and (stream.encoding or "").replace("-", "").lower() != "utf8":
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            else:
+                stream.reconfigure(errors="replace")
+        except (OSError, ValueError):
+            pass  # a closed or unusual stream: leave it as it is
+
+
 def _setup_logging(verbose: bool, quiet: bool = False) -> None:
     private_dir(STATE_DIR)  # logs, the day cache, your questions: only you can read them
     private_dir(CONFIG_PATH.parent)
@@ -393,7 +413,8 @@ def cmd_ask(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="claude-worklog", description=__doc__)
+    _safe_stdio()
+    ap =argparse.ArgumentParser(prog="claude-worklog", description=__doc__)
     ap.add_argument("--version", action="version", version=__version__)
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
